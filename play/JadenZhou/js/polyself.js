@@ -58,7 +58,8 @@ import { pline, You, Your, You_cant, You_feel, pline_The, newsym,
          see_monsters, canspotmon } from './display.js';
 import { ACURR, exercise, ATTRMAX, ATTRMIN, adjabil, newhp,
          setuhpmax } from './attrib.js';
-import { rndexp, hliquid } from './potion.js';
+import { rndexp, hliquid, find_delayed_killer, dealloc_killer } from './potion.js';
+import { POLYMORPH, GENOCIDED } from './const.js';
 import { buried_ball_to_freedom } from './dig.js';
 import { newpw } from './exper.js';
 import { newuhs } from './eat.js';
@@ -119,6 +120,44 @@ import { otense as otense_ps } from './objnam.js';
 import { observe_object as observe_object_ps, makeknown as makeknown_ps } from './o_init.js';
 import { Hallucination as Hallucination_ps } from './youprop.js';
 import { arti_light_radius } from './light.js';
+import { is_clinger as is_clinger_ps, digests as digests_ps } from './mondata.js';
+import { ECMD_OK as ECMD_OK_PS, IS_FOUNTAIN as IS_FOUNTAIN_PS,
+         Is_airlevel as Is_airlevel_ps,
+         Is_waterlevel as Is_waterlevel_ps } from './const.js';
+import { There as There_ps } from './display.js';
+import { level_objects_at as level_objects_at_ps } from './mkobj.js';
+import { Stone_resistance as Stone_resistance_ps } from './youprop.js';
+import { cxname as cxname_ps } from './objnam.js';
+import { has_ceiling as has_ceiling_ps, youhiding as youhiding_ps } from './insight.js';
+import { were_summon as were_summon_ps } from './were.js';
+import * as TT from './trap.js';
+import { couldsee as couldsee_gz } from './vision.js';
+import { Invis as Invis_gz, See_invisible as See_invisible_gz,
+         Free_action as Free_action_gz, Confusion as Confusion_gz } from './youprop.js';
+import { y_monnam as y_monnam_gz, l_monnam as l_monnam_gz } from './do_name.js';
+import { setmangry as setmangry_gz } from './mon.js';
+import { helpless as helpless_gz } from './monmove.js';
+import { resists_fire as resists_fire_gz } from './mondata.js';
+import { destroy_items as destroy_items_gz } from './zap.js';
+import { ignite_items as ignite_items_gz } from './trap.js';
+import { STONING as STONING_GZ, M_AP_TYPE as M_AP_TYPE_GZ,
+         M_AP_FURNITURE as M_AP_FURNITURE_GZ } from './const.js';
+import { canseemon as canseemon_gz } from './display.js';
+import { t_at as t_at_sw, deltrap as deltrap_sw, dotrap as dotrap_sw,
+         maketrap as maketrap_sw, feeltrap as feeltrap_sw } from './trap.js';
+import { IS_AIR as IS_AIR_SW, NATTK as NATTK_SW, A_DEX as A_DEX_SW,
+         NO_TRAP_FLAGS as NO_TRAP_FLAGS_SW, STAIRS as STAIRS_SW,
+         SHOPBASE as SHOPBASE_SW, SHOP_WEB_COST as SHOP_WEB_COST_SW } from './const.js';
+import { Levitation as Levitation_sw } from './youprop.js';
+import { is_animal as is_animal_sw } from './mondata.js';
+import { bury_objs as bury_objs_sw } from './dig.js';
+import { On_stairs as On_stairs_sw } from './dogmove.js';
+import { in_rooms as in_rooms_sw } from './hack.js';
+import { add_damage as add_damage_sw } from './shk.js';
+import { wakeup as wakeup_ps, killed as killed_ps, DEADMONSTER as DEADMONSTER_ps } from './mon.js';
+import { mindless as mindless_ps } from './mondata.js';
+import { BOLT_LIM as BOLT_LIM_PS } from './const.js';
+import { mdistu as mdistu_ps, s_suffix as s_suffix_ps } from './hacklib.js';
 import { maybe_adjust_light } from './mkobj.js';
 import { were_beastie, counter_were } from './were.js';
 import { strsubst as strsubst_ps } from './hacklib.js';
@@ -370,8 +409,20 @@ async function polyman(fmt, arg) {
 
     await urgent_pline(fmt.replace("%s", arg));
     /* check whether player foolishly genocided self while poly'd */
-    if (game.mvitals && (game.mvitals[u.umonster]?.mvflags & G_GENOD))
-        throw new Error('polyman(): self-genocide while polymorphed not ported yet');
+    if (ugenocided()) {
+        /* intervening activity might have clobbered genocide info */
+        const kptr = find_delayed_killer(POLYMORPH);
+
+        if (kptr != null && kptr.name) {
+            game.killer.format = kptr.format;
+            game.killer.name = kptr.name;
+        } else {
+            game.killer.format = KILLED_BY_PS;
+            game.killer.name = "self-genocide";
+        }
+        dealloc_killer(kptr);
+        await done_ps(GENOCIDED);
+    }
 
     if (uprop_on(SEE_INVIS) !== had_see_invis)
         set_mimic_blocking(); /* See_invisible just toggled */
@@ -1680,6 +1731,447 @@ export async function dospit() {
         otmp.spe = 1; /* to indicate it's yours */
         await throwit(otmp, 0, false, null);
     }
+    return ECMD_TIME;
+}
+
+// C ref: polyself.c doremove()
+export async function doremove() {
+    const u = game.u;
+
+    if (!Punished()) {
+        if (u.utrap && u.utraptype === TT_BURIEDBALL) {
+            await pline_The(`ball and chain are buried firmly in the ${
+                surface(u.ux, u.uy)}.`);
+            return ECMD_OK_PS;
+        }
+        await You("are not chained to anything!");
+        return ECMD_OK_PS;
+    }
+    await unpunish();
+    return ECMD_TIME;
+}
+
+// C ref: polyself.c dospinweb()
+export async function dospinweb() {
+    const u = game.u;
+    const x = u.ux, y = u.uy;
+    let ttmp = t_at_sw(x, y);
+    /* disallow webs on water, lava, air & cloud */
+    const reject_terrain = is_pool_or_lava(x, y)
+                           || IS_AIR_SW(game.level.at(x, y).typ);
+
+    /* [at the time this was written, it was not possible to be both a
+       webmaker and a flyer, but with the advent of amulet of flying that
+       became a possibility; at present hero can spin a web while flying] */
+    if (Levitation_sw() || reject_terrain) {
+        await You(`must be on ${reject_terrain ? "solid" : "the"} ground to spin a web.`);
+        return ECMD_OK_PS;
+    }
+    if (u.uswallow) {
+        await You(`release web fluid inside ${mon_nam(u.ustuck)}.`);
+        if (is_animal_sw(u.ustuck.data)) {
+            await expels(u.ustuck, u.ustuck.data, true);
+            return ECMD_OK_PS;
+        }
+        if (is_whirly(u.ustuck.data)) {
+            let i;
+
+            for (i = 0; i < NATTK_SW; i++)
+                if (u.ustuck.data.mattk[i].aatyp === M.AT_ENGL)
+                    break;
+            if (i === NATTK_SW)
+                impossible("Swallower has no engulfing attack?");
+            else {
+                let sweep = '';
+
+                switch (u.ustuck.data.mattk[i].adtyp) {
+                case M.AD_FIRE:
+                    sweep = "ignites and ";
+                    break;
+                case M.AD_ELEC:
+                    sweep = "fries and ";
+                    break;
+                case M.AD_COLD:
+                    sweep = "freezes, shatters and ";
+                    break;
+                }
+                await pline_The(`web ${sweep}is swept away!`);
+            }
+            return ECMD_OK_PS;
+        } /* default: a nasty jelly-like creature */
+        await pline_The(`web dissolves into ${mon_nam(u.ustuck)}.`);
+        return ECMD_OK_PS;
+    }
+    if (u.utrap) {
+        await You("cannot spin webs while stuck in a trap.");
+        return ECMD_OK_PS;
+    }
+    await exercise(A_DEX_SW, true);
+    if (ttmp) {
+        switch (ttmp.ttyp) {
+        case TT.PIT:
+        case TT.SPIKED_PIT:
+            await You("spin a web, covering up the pit.");
+            deltrap_sw(ttmp);
+            await bury_objs_sw(x, y);
+            newsym(x, y);
+            return ECMD_TIME;
+        case TT.SQKY_BOARD:
+            await pline_The("squeaky board is muffled.");
+            deltrap_sw(ttmp);
+            newsym(x, y);
+            return ECMD_TIME;
+        case TT.TELEP_TRAP:
+        case TT.LEVEL_TELEP:
+        case TT.MAGIC_PORTAL:
+        case TT.VIBRATING_SQUARE:
+            await Your("webbing vanishes!");
+            return ECMD_OK_PS;
+        case TT.WEB:
+            await You("make the web thicker.");
+            return ECMD_TIME;
+        case TT.HOLE:
+        case TT.TRAPDOOR:
+            await You(`web over the ${
+                (ttmp.ttyp === TT.TRAPDOOR) ? "trap door" : "hole"}.`);
+            deltrap_sw(ttmp);
+            newsym(x, y);
+            return ECMD_TIME;
+        case TT.ROLLING_BOULDER_TRAP:
+            await You("spin a web, jamming the trigger.");
+            deltrap_sw(ttmp);
+            newsym(x, y);
+            return ECMD_TIME;
+        case TT.ARROW_TRAP:
+        case TT.DART_TRAP:
+        case TT.BEAR_TRAP:
+        case TT.ROCKTRAP:
+        case TT.FIRE_TRAP:
+        case TT.LANDMINE:
+        case TT.SLP_GAS_TRAP:
+        case TT.RUST_TRAP:
+        case TT.MAGIC_TRAP:
+        case TT.ANTI_MAGIC:
+        case TT.POLY_TRAP:
+            await You("have triggered a trap!");
+            await dotrap_sw(ttmp, NO_TRAP_FLAGS_SW);
+            return ECMD_TIME;
+        default:
+            impossible(`Webbing over trap type ${ttmp.ttyp}?`);
+            return ECMD_OK_PS;
+        }
+    } else if (On_stairs_sw(x, y)) {
+        /* cop out: don't let them hide the stairs */
+        await Your(`web fails to impede access to the ${
+            (game.level.at(x, y).typ === STAIRS_SW) ? "stairs" : "ladder"}.`);
+        return ECMD_TIME;
+    }
+    ttmp = maketrap_sw(x, y, TT.WEB);
+    if (ttmp) {
+        await You("spin a web.");
+        ttmp.madeby_u = 1;
+        feeltrap_sw(ttmp);
+        if (in_rooms_sw(x, y, SHOPBASE_SW).length)
+            add_damage_sw(x, y, SHOP_WEB_COST_SW);
+    }
+    return ECMD_TIME;
+}
+
+// C ref: polyself.c dosummon()
+export async function dosummon() {
+    const u = game.u;
+    /* int placeholder: were_summon()'s visible count */
+    const out = { visible: 0 };
+
+    if (u.uen < 10) {
+        await You("lack the energy to send forth a call for help!");
+        return ECMD_OK_PS;
+    }
+    u.uen -= 10;
+    game.disp_botl = true;
+
+    await You("call upon your brethren for help!");
+    await exercise(A_WIS, true);
+    if (!await were_summon_ps(game.youmonst.data, true, out))
+        await pline("But none arrive.");
+    return ECMD_TIME;
+}
+
+// C ref: polyself.c domindblast()
+export async function domindblast() {
+    const u = game.u;
+    let mtmp, nmon;
+    let dmg;
+
+    if (u.uen < 10) {
+        await You("concentrate but lack the energy to maintain doing so.");
+        return ECMD_OK_PS;
+    }
+    u.uen -= 10;
+    game.disp_botl = true;
+
+    await You("concentrate.");
+    await pline("A wave of psychic energy pours out.");
+    for (mtmp = game.fmon; mtmp; mtmp = nmon) {
+        let u_sen;
+
+        nmon = mtmp.nmon;
+        if (DEADMONSTER_ps(mtmp))
+            continue;
+        if (mdistu_ps(mtmp) > BOLT_LIM_PS * BOLT_LIM_PS)
+            continue;
+        if (mtmp.mpeaceful)
+            continue;
+        if (mindless_ps(mtmp.data))
+            continue;
+        u_sen = telepathic(mtmp.data) && !mtmp.mcansee;
+        if (u_sen || (telepathic(mtmp.data) && rn2(2)) || !rn2(10)) {
+            dmg = rnd(15);
+            /* wake it up first, to bring hidden monster out of hiding;
+               but in case it is currently peaceful, don't make it hostile
+               unless it will survive the psychic blast, otherwise hero
+               would avoid the penalty for killing it while peaceful */
+            await wakeup_ps(mtmp, (dmg > mtmp.mhp) ? true : false);
+            await You(`lock in on ${s_suffix_ps(mon_nam(mtmp))} ${
+                u_sen ? "telepathy"
+                  : telepathic(mtmp.data) ? "latent telepathy"
+                    : "mind"}.`);
+            mtmp.mhp -= dmg;
+            if (DEADMONSTER_ps(mtmp))
+                await killed_ps(mtmp);
+        }
+    }
+    return ECMD_TIME;
+}
+
+// C ref: polyself.c dogaze()
+export async function dogaze() {
+    const u = game.u;
+    let mtmp;
+    let looked = 0;
+    let qbuf;
+    let i;
+    let adtyp = 0;
+
+    for (i = 0; i < NATTK_SW; i++) {
+        if (game.youmonst.data.mattk[i].aatyp === M.AT_GAZE) {
+            adtyp = game.youmonst.data.mattk[i].adtyp;
+            break;
+        }
+    }
+    if (adtyp !== M.AD_CONF && adtyp !== M.AD_FIRE) {
+        impossible(`gaze attack ${adtyp}?`);
+        return ECMD_OK_PS;
+    }
+
+    if (Blind()) {
+        await You_cant("see anything to gaze at.");
+        return ECMD_OK_PS;
+    } else if (Hallucination_ps()) {
+        await You_cant("gaze at anything you can see.");
+        return ECMD_OK_PS;
+    }
+    if (u.uen < 15) {
+        await You("lack the energy to use your special gaze!");
+        return ECMD_OK_PS;
+    }
+    u.uen -= 15;
+    game.disp_botl = true;
+
+    for (mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (DEADMONSTER_ps(mtmp))
+            continue;
+        if (canseemon_gz(mtmp) && couldsee_gz(mtmp.mx, mtmp.my)) {
+            looked++;
+            if (Invis_gz() && !perceives(mtmp.data)) {
+                await pline(`${Monnam(mtmp)} seems not to notice your gaze.`);
+            } else if (mtmp.minvis && !See_invisible_gz()) {
+                await You_cant(`see where to gaze at ${Monnam(mtmp)}.`);
+            } else if (M_AP_TYPE_GZ(mtmp) === M_AP_FURNITURE_GZ
+                       || M_AP_TYPE_GZ(mtmp) === M_AP_OBJECT) {
+                looked--;
+                continue;
+            } else if (game.flags.safe_dog && mtmp.mtame && !Confusion_gz()) {
+                await You(`avoid gazing at ${y_monnam_gz(mtmp)}.`);
+            } else {
+                if (game.flags.confirm && mtmp.mpeaceful && !Confusion_gz()) {
+                    qbuf = `Really ${(adtyp === M.AD_CONF) ? "confuse" : "attack"} ${
+                        mon_nam(mtmp)}?`;
+                    if (await tty_yn_function_ps(qbuf, "yn", 'n') !== 'y') /* y_n() */
+                        continue;
+                }
+                await setmangry_gz(mtmp, true);
+                if (helpless_gz(mtmp) || mtmp.mstun
+                    || !mtmp.mcansee || !haseyes(mtmp.data)) {
+                    looked--;
+                    continue;
+                }
+                /* No reflection check for consistency with when a monster
+                 * gazes at *you*--only medusa gaze gets reflected then.
+                 */
+                if (adtyp === M.AD_CONF) {
+                    if (!mtmp.mconf)
+                        await Your(`gaze confuses ${mon_nam(mtmp)}!`);
+                    else
+                        await pline(`${Monnam(mtmp)} is getting more and more confused.`);
+                    mtmp.mconf = 1;
+                } else if (adtyp === M.AD_FIRE) {
+                    let dmg = d(2, 6);
+                    const orig_dmg = dmg, lev = u.ulevel;
+
+                    await You(`attack ${mon_nam(mtmp)} with a fiery gaze!`);
+                    if (resists_fire_gz(mtmp)) {
+                        await pline_The(`fire doesn't burn ${mon_nam(mtmp)}!`);
+                        dmg = 0;
+                    }
+                    if (lev > rn2(20)) {
+                        dmg += await destroy_items_gz(mtmp, M.AD_FIRE, orig_dmg);
+                        await ignite_items_gz(mtmp.minvent);
+                    }
+                    if (dmg)
+                        mtmp.mhp -= dmg;
+                    if (DEADMONSTER_ps(mtmp))
+                        await killed_ps(mtmp);
+                }
+                /* For consistency with passive() in uhitm.c, this only
+                 * affects you if the monster is still alive.
+                 */
+                if (DEADMONSTER_ps(mtmp))
+                    continue;
+
+                if (mtmp.data === mons[M.PM_FLOATING_EYE] && !mtmp.mcan) {
+                    if (!Free_action_gz()) {
+                        await You(`are frozen by ${s_suffix_ps(mon_nam(mtmp))} gaze!`);
+                        nomul((u.ulevel > 6 || rn2(4))
+                                  ? -d(mtmp.m_lev + 1,
+                                       mtmp.data.mattk[0].damd)
+                                  : -200);
+                        game.multi_reason = "frozen by a monster's gaze";
+                        game.nomovemsg = null;
+                        return ECMD_TIME;
+                    } else
+                        await You(`stiffen momentarily under ${
+                            s_suffix_ps(mon_nam(mtmp))} gaze.`);
+                }
+                /* Technically this one shouldn't affect you at all because
+                 * the Medusa gaze is an active monster attack that only
+                 * works on the monster's turn, but for it to *not* have an
+                 * effect would be too weird.
+                 */
+                if (mtmp.data === mons[M.PM_MEDUSA] && !mtmp.mcan) {
+                    await pline(`Gazing at the awake ${l_monnam_gz(mtmp)} is not a very good idea.`);
+                    /* as if gazing at a sleeping anything is fruitful... */
+                    await urgent_pline("You turn to stone...");
+                    killer_ps().format = KILLED_BY_PS;
+                    killer_ps().name = "deliberately meeting Medusa's gaze";
+                    await done_ps(STONING_GZ);
+                }
+            }
+        }
+    }
+    if (!looked)
+        await You("gaze at no place in particular.");
+    return ECMD_TIME;
+}
+
+// C ref: polyself.c dohide()
+export async function dohide() {
+    const u = game.u;
+    const ismimic = game.youmonst.data.mlet === M.S_MIMIC,
+          on_ceiling = is_clinger_ps(game.youmonst.data) || Flying();
+    const U_AP_TYPE = () => (game.youmonst.m_ap_type || M_AP_NOTHING);
+
+    /* can't hide while being held (or holding) or while trapped
+       (except for floor hiders [trapper or mimic] in pits) */
+    if (u.ustuck || (u.utrap && (u.utraptype !== TT_PIT || on_ceiling))) {
+        await You_cant(`hide while you're ${
+            !u.ustuck ? "trapped"
+              : u.uswallow ? (digests_ps(u.ustuck.data) ? "swallowed"
+                                                        : "engulfed")
+                : !sticks(game.youmonst.data) ? "being held"
+                  : (humanoid(u.ustuck.data) ? "holding someone"
+                                             : "holding that creature")}.`);
+        if (u.uundetected || (ismimic && U_AP_TYPE() !== M_AP_NOTHING)) {
+            u.uundetected = 0;
+            game.youmonst.m_ap_type = M_AP_NOTHING;
+            newsym(u.ux, u.uy);
+        }
+        return ECMD_OK_PS;
+    }
+    /* note: hero-as-eel handling is incomplete but unnecessary;
+       such critters aren't offered the option of hiding via #monster */
+    if (game.youmonst.data.mlet === M.S_EEL && !is_pool(u.ux, u.uy)) {
+        if (IS_FOUNTAIN_PS(game.level.at(u.ux, u.uy).typ))
+            await pline_The("fountain is not deep enough to hide in.");
+        else
+            await There_ps(`is no ${hliquid("water")} to hide in here.`);
+        u.uundetected = 0;
+        return ECMD_OK_PS;
+    }
+    if (hides_under(game.youmonst.data)) {
+        let ct = 0;
+        const pile = level_objects_at_ps(u.ux, u.uy);
+        const otop = pile[0] || null;
+        let otmp, k;
+
+        if (!otop) {
+            await There_ps("is nothing to hide under here.");
+            u.uundetected = 0;
+            return ECMD_OK_PS;
+        }
+        for (k = 0, otmp = otop;
+             otmp && otmp.otyp === O.CORPSE
+                  && touch_petrifies(mons[otmp.corpsenm]);
+             otmp = pile[++k] || null)
+            ct += otmp.quan;
+        /* otmp will be Null iff the entire pile consists of 'trice corpses */
+        if (!otmp && !Stone_resistance_ps()) {
+            let corpse_name = cxname_ps(otop);
+
+            /* for the plural case, we'll say "cockatrice corpses" or
+               "chickatrice corpses" depending on the top of the pile
+               even if both types are present */
+            if (ct === 1)
+                corpse_name = an(corpse_name);
+            /* no need to check poly_when_stoned(); no hide-underers can
+               turn into stone golems instead of becoming petrified */
+            await pline(`Hiding under ${corpse_name}${plur(ct)} is a fatal mistake...`);
+            const kbuf = `hiding under ${corpse_name}${plur(ct)}`;
+            await instapetrify(kbuf);
+            /* only reach here if life-saved */
+            u.uundetected = 0;
+            return ECMD_TIME;
+        }
+    }
+    /* Planes of Air and Water */
+    if (on_ceiling && !has_ceiling_ps(u.uz)) {
+        await There_ps("is nowhere to hide above you.");
+        u.uundetected = 0;
+        return ECMD_OK_PS;
+    }
+    if ((is_hider(game.youmonst.data) && !Flying()) /* floor hider */
+        && (Is_airlevel_ps(u.uz) || Is_waterlevel_ps(u.uz))) {
+        await There_ps("is nowhere to hide beneath you.");
+        u.uundetected = 0;
+        return ECMD_OK_PS;
+    }
+    /* TODO? inhibit floor hiding at furniture locations, or
+     * else make youhiding() give smarter messages at such spots.
+     */
+
+    if (u.uundetected || (ismimic && U_AP_TYPE() !== M_AP_NOTHING)) {
+        await youhiding_ps(false, 1); /* "you are already hiding" */
+        return ECMD_OK_PS;
+    }
+
+    if (ismimic) {
+        /* should bring up a dialog "what would you like to imitate?" */
+        game.youmonst.m_ap_type = M_AP_OBJECT;
+        game.youmonst.mappearance = O.STRANGE_OBJECT;
+    } else
+        u.uundetected = 1;
+    newsym(u.ux, u.uy);
+    await youhiding_ps(false, 0); /* "you are now hiding" */
     return ECMD_TIME;
 }
 

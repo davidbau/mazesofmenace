@@ -55,7 +55,7 @@ import { mon_track_clear } from './monmove.js';
 import { mnexto, rloc_to } from './teleport.js';
 import { on_level, ledger_to_dnum, ledger_to_dlev, depth,
          In_W_tower, ledger_no } from './dungeon.js';
-import { relmon, mnearto } from './mon.js';
+import { relmon, mnearto, m_into_limbo } from './mon.js';
 import { stairway_find_from, stairway_find, somexy } from './mklev.js';
 import { in_rooms, impossible } from './hack.js';
 import { m_unleash } from './apply.js';
@@ -504,22 +504,22 @@ export function update_mlstmv() {
             mtmp.mlstmv = game.moves; /* set_mon_lastmove() */
 }
 
-/* note: always reset when used so doesn't need to be part of struct 'g' */
-let failed_arrivals = null;
+/* note: always reset when used so doesn't need to be part of struct 'g'
+   [C's static 'failed_arrivals' is game.failed_arrivals here: per-game
+   state is kept in game] */
 
 const With_you = 0, After_you = 1, Before_you = 2; /* mon_arrive() 'when' */
 const MON_STILL_ARRIVING = 0x100;
 
 // C ref: dog.c losedogs()
-// Shopkeepers dismissing Kops (make_happy_shoppers()) and failed
-// arrivals going into limbo (m_into_limbo()) are not ported yet.
+// Shopkeepers dismissing Kops (make_happy_shoppers()) are not ported yet.
 export async function losedogs() {
     const g = game;
     const u = g.u;
     let mtmp, prev;
     let dismissKops = 0, xyloc;
 
-    failed_arrivals = null;
+    g.failed_arrivals = null;
 
     /* check for returning shk(s) */
     for (mtmp = g.migrating_mons; mtmp; mtmp = mtmp.nmon) {
@@ -578,14 +578,23 @@ export async function losedogs() {
         mtmp = next;
     }
 
-    /* put any monsters who couldn't arrive back on migrating_mons */
-    if (failed_arrivals)
-        throw new Error('losedogs(): m_into_limbo() not ported yet');
+    /* put any monsters who couldn't arrive back on migrating_mons,
+       clearing out the temporary 'failed_arrivals' list in the process */
+    while ((mtmp = g.failed_arrivals) != null) {
+        g.failed_arrivals = mtmp.nmon;
+        /* mon_arrive() put mtmp onto fmon, but if there wasn't room to
+           arrive, relmon() was used to take it off again; put it back now
+           because m_into_limbo() expects it to be there */
+        mtmp.nmon = g.fmon;
+        g.fmon = mtmp;
+        /* set this monster to migrate back to this level if hero leaves
+           and then returns */
+        await m_into_limbo(mtmp);
+    }
 }
 
 // C ref: dog.c mon_arrive()
-// Portal arrivals and failed arrivals (m_into_limbo())
-// are not ported yet.
+// Portal arrivals are not ported yet.
 export async function mon_arrive(mtmp, when) {
     const g = game;
     const u = g.u;
@@ -762,9 +771,12 @@ export async function mon_arrive(mtmp, when) {
     else
         failed_to_place = !(await rloc(mtmp, RLOC_NOMSG));
 
-    if (failed_to_place)
-        /* relmon(mtmp, &failed_arrivals): losedogs() would deal with it */
-        throw new Error('mon_arrive(): failed arrival (m_into_limbo()) not ported yet');
+    if (failed_to_place) {
+        /* (when == Wiz_arrive => m_into_limbo(mtmp): the Wizard's
+           resurrect() doesn't call mon_arrive() here) */
+        /* losedogs() will deal with this */
+        relmon(mtmp, 'failed_arrivals');
+    }
     mtmp.mstate &= ~MON_STILL_ARRIVING;
 }
 

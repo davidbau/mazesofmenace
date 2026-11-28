@@ -1848,7 +1848,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
             }
         } else {
             if (weapon === ZAPPED_WAND && obj.otyp === WAN_PROBING
-                && glyph_is_invisible(g.level.at(x, y).glyph)) {
+                && glyph_is_invisible(g.level.at(x, y).remembered_glyph)) {
                 unmap_object(x, y);
                 newsym(x, y);
             }
@@ -1892,8 +1892,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         }
         if (weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM) {
             /* 'I' present but no monster: erase; do this before tmp_at() */
-            if (g.level.at(x, y).glyph !== undefined
-                && glyph_is_invisible(g.level.at(x, y).glyph)
+            if (glyph_is_invisible(g.level.at(x, y).remembered_glyph)
                 && cansee(x, y)) {
                 unmap_object(x, y);
                 newsym(x, y);

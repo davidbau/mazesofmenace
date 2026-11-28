@@ -133,7 +133,9 @@ export async function can_twoweapon() {
         ; /* must be life-saved to reach here; return FALSE */
     } else if (game.u.uprops[GLIB]?.intrinsic || game.u.uprops[GLIB]?.extrinsic
                || g.uswapwep.cursed) {
-        throw new Error('can_twoweapon(): drop_uswapwep() not ported yet');
+        if (!(game.u.uprops[GLIB]?.intrinsic || game.u.uprops[GLIB]?.extrinsic))
+            g.uswapwep.bknown = 1; /* set_bknown(uswapwep, 1) */
+        await drop_uswapwep();
     } else
         return true;
     return false;

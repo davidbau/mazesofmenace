@@ -494,7 +494,7 @@ export async function teleds(nux, nuy, teleds_flags) {
      * entering arm: a hero who jumps/teleports onto lava or water falls in
      * (drown()/lava_effects()); true means she changed location, so the rest
      * of spoteffects is skipped. */
-    if (!game.in_steed_dismounting && !game.iflags?.in_lava_effects) {
+    if (!game.iflags?.in_lava_effects) {
         /* hack.c:3327-3340 — spoteffects()'s inspoteffects recursion guard and
          * statics (shared with js/landing-effects.js): a hero poly'd to an iron
          * golem teleported into water is rehumanized by drown()'s losehp(), and

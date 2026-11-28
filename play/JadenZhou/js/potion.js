@@ -14,8 +14,7 @@
 // docall(), hliquid(); objnam.c fruitname(); apply.c
 // unfixable_trouble_count(); exper.c rndexp(); wizard.c aggravate();
 // display.c set_mimic_blocking(), see_objects(), see_traps(); eat.c
-// eatmupdate()).  Dipping (dodip() past the first prompt, potion_dip(),
-// mixtype(), H2Opotion_dip()) is not ported yet.
+// eatmupdate()).  Dipping into water (H2Opotion_dip()) is not ported yet.
 
 import { DEADMONSTER } from './mon.js';
 import { resists_poison, breathless, is_silent, has_head, is_human, likes_fire,
@@ -126,6 +125,15 @@ import {
 import { Upolyd, Role_if } from './const.js';
 import { uprop } from './youprop.js';
 import { yname } from './objnam.js';
+import { useupall as useupall_pd, freeinv as freeinv_pd } from './invent.js';
+import { simpleonames as simpleonames_pd, thesimpleoname as thesimpleoname_pd } from './iactions.js';
+import { near_capacity as near_capacity_pd } from './hack.js';
+import { costly_alteration as costly_alteration_pd, mkobj as mkobj_pd, fixup_oil as fixup_oil_pd,
+         splitobj as splitobj_pd, obj_extract_self as obj_extract_self_pd } from './mkobj.js';
+import { observe_object as observe_object_pd } from './o_init.js';
+import { hold_another_object as hold_another_object_pd } from './wizcmds.js';
+import { BOLT_LIM as BOLT_LIM_PD, COST_NUTRLZ as COST_NUTRLZ_PD,
+         MOD_ENCUMBER as MOD_ENCUMBER_PD } from './const.js';
 import { new_were, you_were, you_unwere, set_ulycn } from './were.js';
 import { clone_mon as clone_mon_sm } from './makemon.js';
 import { a_monnam as a_monnam_dj } from './do_name.js';
@@ -2466,10 +2474,148 @@ async function poof(potion) {
     useup(potion);
 }
 
+// C ref: potion.c mixtype()
+/* returns the potion type when o1 is dipped in o2 */
+function mixtype(o1, o2) {
+    let o1typ = o1.otyp, o2typ = o2.otyp;
+
+    /* cut down on the number of cases below */
+    if (o1.oclass === POTION_CLASS_PD
+        && (o2typ === O.POT_GAIN_LEVEL || o2typ === O.POT_GAIN_ENERGY
+            || o2typ === O.POT_HEALING || o2typ === O.POT_EXTRA_HEALING
+            || o2typ === O.POT_FULL_HEALING || o2typ === O.POT_ENLIGHTENMENT
+            || o2typ === O.POT_FRUIT_JUICE)) {
+        /* swap o1 and o2 */
+        o1typ = o2.otyp;
+        o2typ = o1.otyp;
+    }
+
+    switch (o1typ) {
+    case O.POT_HEALING:
+        if (o2typ === O.POT_SPEED)
+            return O.POT_EXTRA_HEALING;
+        /*FALLTHRU*/
+    case O.POT_EXTRA_HEALING:
+    case O.POT_FULL_HEALING:
+        if (o2typ === O.POT_GAIN_LEVEL || o2typ === O.POT_GAIN_ENERGY)
+            return (o1typ === O.POT_HEALING) ? O.POT_EXTRA_HEALING
+                   : (o1typ === O.POT_EXTRA_HEALING) ? O.POT_FULL_HEALING
+                     : O.POT_GAIN_ABILITY;
+        /*FALLTHRU*/
+    case O.UNICORN_HORN:
+        switch (o2typ) {
+        case O.POT_SICKNESS:
+            return O.POT_FRUIT_JUICE;
+        case O.POT_HALLUCINATION:
+        case O.POT_BLINDNESS:
+        case O.POT_CONFUSION:
+            return O.POT_WATER;
+        }
+        break;
+    case O.AMETHYST: /* "a-methyst" == "not intoxicated" */
+        if (o2typ === O.POT_BOOZE)
+            return O.POT_FRUIT_JUICE;
+        break;
+    case O.POT_GAIN_LEVEL:
+    case O.POT_GAIN_ENERGY:
+        switch (o2typ) {
+        case O.POT_CONFUSION:
+            return (rn2(3) ? O.POT_BOOZE : O.POT_ENLIGHTENMENT);
+        case O.POT_HEALING:
+            return O.POT_EXTRA_HEALING;
+        case O.POT_EXTRA_HEALING:
+            return O.POT_FULL_HEALING;
+        case O.POT_FULL_HEALING:
+            return O.POT_GAIN_ABILITY;
+        case O.POT_FRUIT_JUICE:
+            return O.POT_SEE_INVISIBLE;
+        case O.POT_BOOZE:
+            return O.POT_HALLUCINATION;
+        }
+        break;
+    case O.POT_FRUIT_JUICE:
+        switch (o2typ) {
+        case O.POT_SICKNESS:
+            return O.POT_SICKNESS;
+        case O.POT_ENLIGHTENMENT:
+        case O.POT_SPEED:
+            return O.POT_BOOZE;
+        case O.POT_GAIN_LEVEL:
+        case O.POT_GAIN_ENERGY:
+            return O.POT_SEE_INVISIBLE;
+        }
+        break;
+    case O.POT_ENLIGHTENMENT:
+        switch (o2typ) {
+        case O.POT_LEVITATION:
+            if (rn2(3))
+                return O.POT_GAIN_LEVEL;
+            break;
+        case O.POT_FRUIT_JUICE:
+            return O.POT_BOOZE;
+        case O.POT_BOOZE:
+            return O.POT_CONFUSION;
+        }
+        break;
+    }
+
+    return O.STRANGE_OBJECT;
+}
+
+// C ref: potion.c hold_potion()
+async function hold_potion(
+    potobj,
+    drop_fmt, drop_arg,
+    hold_msg)
+{
+    const g = game;
+    const cap = near_capacity_pd(),
+          save_pickup_burden = g.flags.pickup_burden;
+
+    /* prevent a drop due to current setting of the 'pickup_burden' option */
+    if ((g.flags.pickup_burden ?? MOD_ENCUMBER_PD) < cap)
+        g.flags.pickup_burden = cap;
+    /* remove from inventory after calculating near_capacity() */
+    obj_extract_self_pd(potobj);
+    /* re-insert into inventory, possibly merging with compatible stack */
+    potobj = await hold_another_object_pd(potobj, drop_fmt, drop_arg, hold_msg);
+    /* nhUse(potobj) */
+    g.flags.pickup_burden = save_pickup_burden;
+    /* update_inventory(): no perm_invent */
+    return;
+}
+
+// C ref: potion.c dip_potion_explosion()
+async function dip_potion_explosion(obj, dmg) {
+    const u = game.u;
+
+    if (obj.cursed || obj.otyp === POT_ACID_PD
+        || (obj.otyp === POT_OIL_PD && obj.lamplit)
+        || !rn2((game.uarmc && game.uarmc.otyp === O.ALCHEMY_SMOCK) ? 30 : 10)) {
+        /* it would be better to use up the whole stack in advance
+           of the message, but we can't because we need to keep it
+           around for potionbreathe() [and we can't set obj->in_use
+           to 'amt' because that's not implemented] */
+        obj.in_use = 1;
+        await pline(`${!Deaf() ? "BOOM!  " : ""}They explode!`);
+        await wake_nearto(u.ux, u.uy, (BOLT_LIM_PD + 1) * (BOLT_LIM_PD + 1));
+        await exercise(A_STR, false);
+        if (!breathless(game.youmonst.data) || haseyes(game.youmonst.data))
+            await potionbreathe(obj);
+        useupall_pd(obj);
+        await losehp(dmg, /* not physical damage */
+                     "alchemic blast", KILLED_BY_AN);
+        return true;
+    }
+    return false;
+}
+
 // C ref: potion.c potion_dip() -- dip obj into potion; the branches that
-// need H2Opotion_dip(), poly_obj(), potion mixing, oil or mixtype() stop
-// explicitly
+// need H2Opotion_dip(), poly_obj() or oil stop explicitly
 async function potion_dip(obj, potion) {
+    let singlepotion;
+    let mixture;
+
     if (potion === obj && potion.quan === 1) {
         await pline("That is a potion bottle, not a Klein bottle!");
         return ECMD_OK;
@@ -2486,7 +2632,94 @@ async function potion_dip(obj, potion) {
     } else if (obj.otyp === POT_POLYMORPH_PD || potion.otyp === POT_POLYMORPH_PD) {
         throw new Error('potion_dip(): dipping with polymorph (poly_obj()) not ported yet');
     } else if (obj.oclass === POTION_CLASS_PD && obj.otyp !== potion.otyp) {
-        throw new Error('potion_dip(): mixing potions (mixtype()) not ported yet');
+        let amt = obj.quan;
+        let qbuf;
+
+        mixture = mixtype(obj, potion);
+
+        const magic = (mixture !== O.STRANGE_OBJECT) ? objects[mixture].oc_magic
+            : (objects[obj.otyp].oc_magic || objects[potion.otyp].oc_magic);
+        qbuf = "The"; /* assume full stack */
+        if (amt > (obj.odiluted ? 2 : magic ? 3 : 7)) {
+            /* Trying to dip multiple potions will usually affect only a
+               subset; pick an amount between 3 and 8, inclusive, for magic
+               potion result, between 7 and N for non-magic. If diluted
+               potions are being dipped, only two are affected; this is a
+               balance fix to prevent cheap mass alchemy of the (very
+               common) potion of healing into the (very valuable) potion of
+               full healing, whilst permitting both healing->extra healing
+               and extra healing->full healing. */
+            if (obj.odiluted)
+                amt = 2;
+            else if (magic)
+                amt = rnd(Math.min(amt, 8) - (3 - 1)) + (3 - 1); /* 1..6 + 2 */
+            else
+                amt = rnd(amt - (7 - 1)) + (7 - 1); /* 1..(N-6) + 6 */
+
+            if (amt < obj.quan) {
+                obj = splitobj_pd(obj, amt);
+                qbuf = `${obj.quan} of the`;
+            }
+        }
+        /* [N of] the {obj(s)} mix(es) with [one of] {the potion}... */
+        await pline(`${qbuf} ${simpleonames_pd(obj)} ${otense_pd(obj, "mix")} with ${
+            (potion.quan > 1) ? "one of " : ""}${thesimpleoname_pd(potion)}...`);
+        /* get rid of 'dippee' before potential perm_invent updates */
+        useup(potion); /* now gone */
+        /* Mixing potions is dangerous...
+           KMH, balance patch -- acid is particularly unstable */
+        if (await dip_potion_explosion(obj, amt + rnd(9)))
+            return ECMD_TIME;
+
+        obj.blessed = obj.cursed = obj.bknown = 0;
+        if (Blind() || Hallucination())
+            obj.dknown = 0;
+
+        if (mixture !== O.STRANGE_OBJECT) {
+            obj.otyp = mixture;
+        } else {
+            let otmp;
+
+            switch (obj.odiluted ? 1 : rnd(8)) {
+            case 1:
+                obj.otyp = POT_WATER_PD;
+                break;
+            case 2:
+            case 3:
+                obj.otyp = POT_SICKNESS_PD;
+                break;
+            case 4:
+                otmp = mkobj_pd(POTION_CLASS_PD, false);
+                obj.otyp = otmp.otyp;
+                /* oil uses obj->age field differently from other potions */
+                if (obj.otyp === POT_OIL_PD || otmp.otyp === POT_OIL_PD)
+                    fixup_oil_pd(obj, otmp);
+                obfree(otmp, null);
+                break;
+            default:
+                useupall_pd(obj);
+                await pline_The(`mixture ${!Blind() ? "glows brightly and " : ""}evaporates.`);
+                return ECMD_TIME;
+            }
+        }
+        obj.odiluted = (obj.otyp !== POT_WATER_PD) ? 1 : 0;
+
+        if (obj.otyp === POT_WATER_PD && !Hallucination()) {
+            await pline_The(`mixture bubbles${Blind() ? "" : ", then clears"}.`);
+        } else if (!Blind()) {
+            await pline_The(`mixture looks ${
+                hcolor_pd(O.OBJ_DESCR(objects[obj.otyp]))}.`);
+        }
+
+        /* this is required when 'obj' was split off from a bigger stack,
+           so that 'obj' will now be assigned its own inventory slot;
+           it has a side-effect of merging 'obj' into another compatible
+           stack if there is one, so we do it even when no split has
+           been made in order to get the merge result for both cases;
+           as a consequence, mixing while Fumbling drops the mixture */
+        freeinv_pd(obj);
+        await hold_potion(obj, "You drop %s!", doname(obj), null);
+        return ECMD_TIME;
     }
     if (potion.otyp === POT_ACID_PD && obj.otyp === CORPSE_PD
         && obj.corpsenm === PM_LICHEN_PD) {
@@ -2528,8 +2761,64 @@ async function potion_dip(obj, potion) {
         throw new Error('potion_dip(): dipping into oil not ported yet');
     /* more_dips: lamp filling needs POT_OIL, which stops above */
     potion.in_use = false; /* didn't go poof */
-    if (obj.otyp === UNICORN_HORN_PD || obj.otyp === AMETHYST_PD)
-        throw new Error('potion_dip(): unicorn horn/amethyst dip (mixtype()) not ported yet');
+    if ((obj.otyp === UNICORN_HORN_PD || obj.otyp === AMETHYST_PD)
+        && (mixture = mixtype(obj, potion)) !== O.STRANGE_OBJECT) {
+        let oldbuf, newbuf;
+        const old_otyp = potion.otyp;
+        let old_dknown = false;
+        const more_than_one = potion.quan > 1;
+
+        oldbuf = '';
+        if (potion.dknown) {
+            old_dknown = true;
+            oldbuf = `${hcolor_pd(O.OBJ_DESCR(objects[potion.otyp]))} `;
+        }
+        /* with multiple merged potions, split off one and
+           just clear it */
+        if (potion.quan > 1) {
+            singlepotion = splitobj_pd(potion, 1);
+        } else
+            singlepotion = potion;
+
+        costly_alteration_pd(singlepotion, COST_NUTRLZ_PD);
+        singlepotion.otyp = mixture;
+        singlepotion.blessed = 0;
+        if (mixture === POT_WATER_PD)
+            singlepotion.cursed = singlepotion.odiluted = 0;
+        else
+            singlepotion.cursed = obj.cursed; /* odiluted left as-is */
+        singlepotion.bknown = 0;
+        singlepotion.dknown = 0; /* provisionally */
+        if (!Blind()) {
+            if (!Hallucination())
+                observe_object_pd(singlepotion, Hallucination());
+            newbuf = '';
+            if (mixture === POT_WATER_PD && singlepotion.dknown)
+                newbuf = "clears";
+            else if (!Blind())
+                newbuf = `turns ${hcolor_pd(O.OBJ_DESCR(objects[mixture]))}`;
+            if (newbuf)
+                await pline_The(`${oldbuf}potion${
+                    more_than_one ? " that you dipped into" : ""} ${newbuf}.`);
+            else
+                await pline("Something happens.");
+
+            if (old_dknown
+                && !objects[old_otyp].oc_name_known
+                && !objects[old_otyp].oc_uname) {
+                /* fakeobj = cg.zeroobj */
+                const fakeobj = { otyp: old_otyp, oclass: POTION_CLASS_PD,
+                                  quan: 0, dknown: 1 }; /* no need to observe_object */
+                await docall(fakeobj);
+            }
+        }
+        /* remove potion from inventory and re-insert it, possibly stacking
+           with compatible ones; override 'pickup_burden' while doing so */
+        await hold_potion(singlepotion, "You juggle and drop %s!",
+                          doname(singlepotion), null);
+        return ECMD_TIME;
+    }
+
     await pline("Interesting...");
     return ECMD_TIME;
 }

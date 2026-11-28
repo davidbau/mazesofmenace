@@ -3426,8 +3426,23 @@ async function moveloop_core_faithful() {
     // C allmain.c:541-542: command effects (including trap entry) can
     // invalidate vision after domove's earlier recalc. Apply that update
     // before the next invocation advances monsters or an occupation.
-    if (g.vision_full_recalc)
-        vision_recalc(0);
+    if (g.vision_full_recalc) {
+        /* C runs vision_recalc(0) — and with it notice_all_mons(TRUE),
+         * vision.c:856 — to completion here, before cliparound()/bot() and
+         * the next key read.  With spot_monsters a "You see <mon>." notice
+         * that does not fit the standing topline more()s INSIDE its own
+         * update_topl (topl.c:262-274 else-arm), so the whole notice chain
+         * belongs on this side of the input boundary: parse()'s pre-read
+         * flush_screen(1) is the first drain that pages the joined line, and
+         * it must see the overflow.  Dropping the returned notice promise let
+         * the last notice land after that flush — the --More-- was never
+         * raised and the nhgetch commit filed the joined line unread
+         * (df-xd28a43a4fb step 142: C "A throne.  You see a peaceful nurse.
+         * You see a soldier.--More--", JS unpaged). */
+        const _notices = vision_recalc(0);
+        if (_notices)
+            await _notices;
+    }
     /* C allmain.c:543-546: after rhack() and vision_recalc(), so the map is
      * redrawn once with correct vision data. */
     if (g.u) tty_cliparound(g.u.ux, g.u.uy);

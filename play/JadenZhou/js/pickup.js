@@ -115,7 +115,16 @@ import { LOST_THROWN, LOST_DROPPED, LOST_STOLEN, LOST_EXPLODING, QBUFSZ,
 import { The, Tobjnam, Yname2, yname } from './objnam.js';
 import { losehp, Maybe_Half_Phys, chest_trap } from './trap.js';
 import { KILLED_BY_AN, W_SADDLE, ARTICLE_THE, SUPPRESS_SADDLE, SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, ONAME_NO_FLAGS, NHW_TEXT, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, BUCX_TYPES, MENU_ITEMFLAGS_SELECTED, PICK_ONE, MENU_PARTIAL, FOOT } from './const.js';
-import { pick_lock, u_have_forceable_weapon } from './lock.js';
+import { pick_lock, u_have_forceable_weapon, boxlock } from './lock.js';
+import { dropx } from './do.js';
+import { remove_worn_item } from './steal.js';
+import { verbalize } from './display.js';
+import { distu } from './hacklib.js';
+import { add_to_minv } from './mkobj.js';
+import { g_at } from './vault.js';
+import { courtmon } from './mklev.js';
+import { IS_THRONE, T_LOOTED, NO_MM_FLAGS } from './const.js';
+import { SPE_WIZARD_LOCK } from './objects.js';
 import { rnd } from './rng.js';
 import { stagger } from './uhitm.js';
 import { ceiling } from './dungeon.js';
@@ -2317,6 +2326,92 @@ export async function doloot() {
     return res;
 }
 
+// C ref: pickup.c reverse_loot()
+/* called when attempting to #loot while confused */
+async function reverse_loot() {
+    let goldob = null, coffers, otmp;
+    let mon;
+    let contribution;
+    let n;
+    const x = game.u.ux, y = game.u.uy;
+
+    if (!rn2(3)) {
+        /* n objects: 1/(n+1) chance per object, 1/(n+1) to fall off end */
+        for (n = inv_cnt(true), otmp = game.invent; otmp;
+             --n, otmp = otmp.nobj)
+            if (!rn2(n + 1)) {
+                await prinv("You find old loot:", otmp, 0);
+                return true;
+            }
+        return false;
+    }
+
+    /* find a money object to mess with */
+    for (goldob = game.invent; goldob; goldob = goldob.nobj)
+        if (goldob.oclass === COIN_CLASS) {
+            contribution = Math.trunc((rnd(5) * goldob.quan + 4) / 5);
+            if (contribution < goldob.quan)
+                goldob = splitobj(goldob, contribution);
+            break;
+        }
+    if (!goldob)
+        return false;
+
+    /* gold might be quivered; dropping would un-wear it, but freeinv()
+       expects caller to do that; do so now */
+    await remove_worn_item(goldob, false);
+
+    if (!IS_THRONE(game.level.at(x, y).typ)) {
+        await dropx(goldob);
+        /* the dropped gold might have fallen to lower level */
+        if (g_at(x, y))
+            await pline("Ok, now there is loot here.");
+    } else {
+        /* find original coffers chest if present, otherwise use nearest */
+        otmp = null;
+        coffers = null;
+        for (const c of game.level.objects || []) {
+            if (c.where !== 'OBJ_FLOOR')
+                continue;
+            if (c.otyp === CHEST) {
+                if (c.spe === 2) {
+                    coffers = c;
+                    break; /* a throne room chest */
+                }
+                if (!otmp || (distu(c.ox, c.oy)
+                              < distu(otmp.ox, otmp.oy)))
+                    otmp = c; /* remember closest ordinary chest */
+            }
+        }
+        if (!coffers)
+            coffers = otmp;
+
+        if (coffers) {
+            /* SetVoice((struct monst *) 0, 0, 80, 0): no voice interface */
+            await verbalize("Thank you for your contribution to reduce the debt.");
+            freeinv(goldob);
+            add_to_container(coffers, goldob);
+            coffers.owt = weight(coffers);
+            coffers.cknown = 0;
+            if (!coffers.olocked) {
+                const boxdummy = { otyp: SPE_WIZARD_LOCK };
+                await boxlock(coffers, boxdummy);
+            }
+        } else if (game.level.at(x, y).flags !== T_LOOTED
+                   && (mon = makemon(courtmon(), x, y, NO_MM_FLAGS)) != null) {
+            freeinv(goldob);
+            add_to_minv(mon, goldob);
+            await pline("The exchequer accepts your contribution.");
+            if (!rn2(10))
+                game.level.at(x, y).flags = T_LOOTED;
+        } else {
+            await You(`drop ${doname(goldob)}.`);
+            await dropx(goldob);
+        }
+    }
+    return true;
+}
+
 // C ref: pickup.c doloot_core() -- loot a container on the floor or loot
 // saddle from mon
 async function doloot_core() {
@@ -2341,8 +2436,8 @@ async function doloot_core() {
         return ECMD_OK;
     }
     if (u_prop(CONFUSION)) {
-        if (rn2(6))
-            throw new Error('doloot_core(): reverse_loot() not ported yet');
+        if (rn2(6) && await reverse_loot())
+            return ECMD_TIME;
         if (rn2(2)) {
             await pline("Being confused, you find nothing to loot.");
             return ECMD_TIME; /* costs a turn */

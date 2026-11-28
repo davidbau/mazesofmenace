@@ -16,6 +16,7 @@
 // tins of a monster, lit light sources, novels, ...) raise not_ported().
 
 import { shk_your, get_obj_location } from './shk.js';
+import { M_AP_OBJECT as M_AP_OBJECT_ON } from './const.js';
 import { letter, strsubst } from './hacklib.js';
 import { wizard } from './dungeon.js';
 import { game } from './gstate.js';
@@ -66,7 +67,7 @@ import { Luck, HAND } from './const.js';
 import { W_TOOL as W_TOOL_XN, W_SADDLE as W_SADDLE_XN } from './const.js';
 import { is_plural } from './wield.js';
 import { peek_timer, obj_to_any } from './timeout.js';
-import { BURN_OBJECT } from './const.js';
+import { BURN_OBJECT, I_SPECIAL } from './const.js';
 import { is_quest_artifact } from './questpgr.js';
 import {
     NO_TRAP, TRAPNUM, ROCKTRAP, MAGIC_PORTAL, is_hole, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP,
@@ -94,6 +95,7 @@ import { recalc_block_point } from './vision.js';
 import { spot_stop_timers } from './timeout.js';
 import { Levitation, Flying } from './youprop.js';
 import { str_start_is, upstart } from './hacklib.js';
+import { plur as plur_xn } from './hacklib.js';
 import { find_mid as find_mid_xn } from './light.js';
 import { FM_FMON as FM_FMON_XN } from './const.js';
 import { noit_mon_nam as noit_mon_nam_xn, mon_pmname as mon_pmname_xn } from './do_name.js';
@@ -640,6 +642,18 @@ export function obj_typename(otyp) {
 
 /* C ref: objnam.c simple_typename() -- obj_typename() without the
    user-assigned name or the appended description */
+// C ref: objnam.c mimic_obj_name()
+/* name of an object a mimic (or the hero) is mimicking */
+export function mimic_obj_name(mtmp) {
+    if ((mtmp.m_ap_type || 0) === M_AP_OBJECT_ON) {
+        if (mtmp.mappearance === O.GOLD_PIECE)
+            return "gold";
+        if (mtmp.mappearance !== O.STRANGE_OBJECT)
+            return simple_typename(mtmp.mappearance);
+    }
+    return "whatcha-may-callit";
+}
+
 export function simple_typename(otyp) {
     const save_uname = objects[otyp].oc_uname;
     objects[otyp].oc_uname = null; /* suppress any name given by user */
@@ -4034,12 +4048,11 @@ function doname_base(obj, doname_flags) {
         break;
     case O.ARMOR_CLASS:
         if (obj.owornmask & W_ARMOR) {
-            if (obj === game.uskin)
-                xn_not_ported('uskin suffix');
-            bp += /* in case of perm_invent update while Wear/Takeoff
+            bp += (obj === game.uskin) ? " (embedded in your skin)"
+                  /* in case of perm_invent update while Wear/Takeoff
                      is in progress; check doffing() before donning()
                      because donning() returns True for both cases */
-                  doffing(obj) ? " (being doffed)"
+                  : doffing(obj) ? " (being doffed)"
                   : donning(obj) ? " (being donned)"
                     : " (being worn)";
             /* slippery fingers is an intrinsic condition of the hero
@@ -4080,7 +4093,10 @@ function doname_base(obj, doname_flags) {
             break;
         }
         if (obj.otyp === O.CANDELABRUM_OF_INVOCATION) {
-            xn_not_ported('candelabrum suffix');
+            /* separately formatted suffix avoids need for ConcatF3() */
+            const suffix = `${plur_xn(obj.spe)}${!obj.lamplit ? " attached" : ", lit"}`;
+            bp += ` (${obj.spe} of 7 candle${suffix})`; /* ConcatF2() */
+            break;
         } else if (obj.otyp === O.OIL_LAMP || obj.otyp === O.MAGIC_LAMP
                    || obj.otyp === O.BRASS_LANTERN || Is_candle(obj)) {
             if (Is_candle(obj)) {
@@ -4214,6 +4230,8 @@ function doname_base(obj, doname_flags) {
     }
     if ((obj.owornmask & ~(W_ARMOR | W_AMUL | W_WEP | W_SWAPWEP | W_QUIVER
                            | W_RINGL | W_RINGR | W_BALL | W_CHAIN
+                           /* uskin's I_SPECIAL bit gets no suffix */
+                           | I_SPECIAL
                            | ((obj.oclass === O.TOOL_CLASS && !is_weptool(obj))
                               ? (W_TOOL_XN | W_SADDLE_XN) : 0)))
         || ((obj.owornmask & (W_RINGL | W_RINGR)) && obj.oclass !== O.RING_CLASS))

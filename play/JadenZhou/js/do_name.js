@@ -480,6 +480,26 @@ export function rndghostname() {
                   : game.plname;
 }
 
+/* Aliases for road-runner nemesis
+ */
+const coynames = [
+    "Carnivorous Vulgaris", "Road-Runnerus Digestus", "Eatibus Anythingus",
+    "Famishus-Famishus", "Eatibus Almost Anythingus", "Eatius Birdius",
+    "Famishius Fantasticus", "Eternalii Famishiis", "Famishus Vulgarus",
+    "Famishius Vulgaris Ingeniusi", "Eatius-Slobbius", "Hardheadipus Oedipus",
+    "Carnivorous Slobbius", "Hard-Headipus Ravenus", "Evereadii Eatibus",
+    "Apetitius Giganticus", "Hungrii Flea-Bagius", "Overconfidentii Vulgaris",
+    "Caninus Nervous Rex", "Grotesques Appetitus", "Nemesis Ridiculii",
+    "Canis latrans"
+];
+
+// C ref: do_name.c coyotename() -- returns the name instead of filling buf
+export function coyotename(mtmp) {
+    return `${x_monnam(mtmp, ARTICLE_NONE, null, 0, true)} - ${
+        mtmp.mcan ? coynames[coynames.length - 1]
+                  : coynames[mtmp.m_id % (coynames.length - 1)]}`;
+}
+
 // C ref: do_name.c rndorcname()
 export function rndorcname() {
     const v = ["a", "ai", "og", "u"];

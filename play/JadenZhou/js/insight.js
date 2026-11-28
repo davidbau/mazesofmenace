@@ -145,6 +145,15 @@ import { TT_BURIEDBALL as TT_BURIEDBALL_IS, TT_LAVA as TT_LAVA_IS,
          TT_INFLOOR as TT_INFLOOR_IS } from './const.js';
 import { hliquid as hliquid_is } from './potion.js';
 import { the as the_is, surface as surface_is } from './iactions.js';
+import { M_AP_NOTHING as M_AP_NOTHING_YH, M_AP_OBJECT as M_AP_OBJECT_YH,
+         M_AP_FURNITURE as M_AP_FURNITURE_YH, M_AP_MONSTER as M_AP_MONSTER_YH,
+         TT_PIT as TT_PIT_YH, SPIKED_PIT as SPIKED_PIT_YH } from './const.js';
+import { simple_typename as simple_typename_yh } from './objnam.js';
+import { waterbody_name as waterbody_name_yh } from './pager.js';
+import { ceiling as ceiling_yh } from './dungeon.js';
+import { hides_under as hides_under_yh } from './mondata.js';
+import { level_objects_at as level_objects_at_yh } from './mkobj.js';
+import { You as You_yh } from './display.js';
 import { t_at as t_at_is, trapname as trapname_is } from './trap.js';
 import { a_monnam as a_monnam_in } from './do_name.js';
 import { has_mgivenname as has_mgivenname_in, MGIVENNAME as MGIVENNAME_in } from './const.js';
@@ -188,7 +197,7 @@ function URIGHTY() { return U().uhandedness === RIGHT_HANDED; }
    attributes_enlightenment() checks */
 
 /* C ref: mondata.h lays_eggs(); monst.h vampshifted() */
-function vampshifted(mon) {
+export function vampshifted(mon) {
     return (mon.cham === M.PM_VAMPIRE || mon.cham === M.PM_VAMPIRE_LEADER
             || mon.cham === M.PM_VLAD_THE_IMPALER) /* is_vampshifter() */
            && !(mon.data.mlet === M.S_VAMPIRE); /* !is_vampire() */
@@ -690,6 +699,65 @@ const achieve_msg = [
     { llflag: LL_MINORAC, msg: "learned castle drawbridge's tune" }, /* achievement #31 */
     { llflag: 0, msg: "" }, /* keep this one at the end */
 ];
+
+// C ref: insight.c youhiding()
+/* the enlightenment line runs synchronously; the topl message for dohide()
+   returns You()'s promise, which the caller awaits */
+export function youhiding(via_enlghtmt, /* enlightenment line vs topl message */
+                          msgflag) {    /* for variant message phrasing */
+    const u = game.u;
+    let buf = "hiding";
+    const ap_type = game.youmonst.m_ap_type || M_AP_NOTHING_YH;
+
+    if (ap_type !== M_AP_NOTHING_YH) {
+        /* mimic; hero is only able to mimic a strange object or gold
+           or hallucinatory alternative to gold, so we skip the details
+           for the hypothetical furniture and monster cases */
+        buf = "mimicking";
+        if (ap_type === M_AP_OBJECT_YH) {
+            buf += ` ${an(simple_typename_yh(game.youmonst.mappearance))}`;
+        } else if (ap_type === M_AP_FURNITURE_YH) {
+            buf += " something";
+        } else if (ap_type === M_AP_MONSTER_YH) {
+            buf += " someone";
+        } else {
+            ; /* something unexpected; leave 'buf' as-is */
+        }
+    } else if (u.uundetected) {
+        if (game.youmonst.data.mlet === M.S_EEL) {
+            if (is_pool(u.ux, u.uy))
+                buf += ` in the ${waterbody_name_yh(u.ux, u.uy)}`;
+        } else if (hides_under_yh(game.youmonst.data)) {
+            const o = level_objects_at_yh(u.ux, u.uy)[0] || null;
+
+            if (o)
+                buf += ` underneath ${ansimpleoname(o)}`;
+        } else if (is_clinger(game.youmonst.data) || Flying()) {
+            /* Flying: 'lurker above' hides on ceiling but doesn't cling */
+            buf += ` on the ${ceiling_yh(u.ux, u.uy)}`;
+        } else {
+            /* on floor; is_hider() but otherwise not special: 'trapper' */
+            if (u.utrap && u.utraptype === TT_PIT_YH) {
+                const t = t_at_is(u.ux, u.uy);
+
+                buf += ` in a ${(t && t.ttyp === SPIKED_PIT_YH) ? "spiked " : ""}pit`;
+            } else
+                buf += ` on the ${surface_is(u.ux, u.uy)}`;
+        }
+    } else {
+        ; /* shouldn't happen; will result in generic "you are hiding" */
+    }
+
+    if (via_enlghtmt) {
+        /* int final = msgflag; ('final' is used by you_are() macro;
+           game.en_final already holds it) */
+        you_are(buf, "");
+        return undefined;
+    } else {
+        /* for dohide(), when player uses '#monster' command */
+        return You_yh(`are ${msgflag ? "already" : "now"} ${buf}.`);
+    }
+}
 
 /* C ref: insight.c You_, are, were, have, had, can, could */
 const You_ = "You ", are = "are ", were = "were ",
@@ -1411,6 +1479,10 @@ function status_enlightenment(mode, final) {
                               : "?"}`; /* surface(): catchall; can't happen */
         you_are(buf, from_what(WWALKING));
     }
+    if (Upolyd() && (u.uundetected
+                     || (game.youmonst.m_ap_type || M_AP_NOTHING_YH)
+                        !== M_AP_NOTHING_YH))
+        youhiding(true, final);
 
     /* internal troubles, mostly in the order that prayer ranks them */
     if (Stoned()) {

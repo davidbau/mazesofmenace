@@ -240,16 +240,16 @@ export async function nasty(summoner) {
                     continue;
                 /* this honors genocide but overrides extinction; it ignores
                    inside-hell-only (G_HELL) & outside-hell-only (G_NOHELL) */
-                if ((mtmp = makemon(mons[makeindex], bypos.x, bypos.y,
-                                    mmflags)) !== null) {
+                if ((mtmp = await nasty_makemon(mons[makeindex], bypos.x,
+                                                bypos.y, mmflags)) !== null) {
                     mtmp.msleeping = mtmp.mpeaceful = mtmp.mtame = 0;
                     set_malign(mtmp);
                 } else {
                     /* random monster to substitute for geno'd selection;
                        unlike direct choice, not forced to be hostile [why?];
                        limit spellcasters to inhibit chain summoning */
-                    if ((mtmp = makemon(null, bypos.x, bypos.y, mmflags))
-                        !== null) {
+                    if ((mtmp = await nasty_makemon(null, bypos.x, bypos.y,
+                                                    mmflags)) !== null) {
                         m_cls = mtmp.data.mlet;
                         if ((difcap > 0 && mtmp.data.difficulty >= difcap
                              /* always capping for substitutes made wanton
@@ -290,6 +290,23 @@ export async function nasty(summoner) {
     if (count)
         count = monster_census(false) - census;
     return count;
+}
+
+// makemon() for nasty(): makemon()'s "<mon> appears" message and its
+// dochugw(mtmp, FALSE) for an occupied hero are async here, so they are
+// handed back and run by makemon_flush_msg() as soon as makemon() returns
+// (see makemon()'s Norep() comment)
+async function nasty_makemon(ptr, x, y, mmflags) {
+    const g = game;
+    let mtmp;
+    g.makemon_want_msg = true;
+    try {
+        mtmp = makemon(ptr, x, y, mmflags);
+    } finally {
+        g.makemon_want_msg = false;
+    }
+    await makemon_flush_msg_wz();
+    return mtmp;
 }
 
 // C ref: wizard.c random_insult[]

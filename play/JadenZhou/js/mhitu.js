@@ -5,6 +5,25 @@
 // error instead of skipping their rolls.
 
 import { Ring_gone } from './do_wear.js';
+import { is_hider as is_hider_mu, likes_gold as likes_gold_mu } from './mondata.js';
+import { ceiling as ceiling_mu } from './dungeon.js';
+import { remove_monster_at as remove_monster_at_mu, worm_move as worm_move_mu } from './worm.js';
+import { enexto as enexto_mu, teleds as teleds_mu } from './teleport.js';
+import { m_at as m_at_mu } from './makemon.js';
+import { set_apparxy as set_apparxy_mu } from './monmove.js';
+import { which_armor as which_armor_mu, find_mac as find_mac_mu } from './worn.js';
+import { hard_helmet as hard_helmet_mu } from './do_wear.js';
+import { m_monnam as m_monnam_mu } from './do_name.js';
+import { level_objects_at as level_objects_at_mu } from './mkobj.js';
+import { EGG as EGG_MU, GOLD_PIECE as GOLD_PIECE_MU } from './objects.js';
+import { impossible as impossible_mu } from './hack.js';
+import { unmul as unmul_mu } from './allmain.js';
+import { mimic_obj_name } from './objnam.js';
+import { TELEDS_ALLOW_DRAG as TELEDS_ALLOW_DRAG_MU, WORN_HELMET as WORN_HELMET_MU,
+         M_AP_OBJECT as M_AP_OBJECT_MU, M_AP_NOTHING } from './const.js';
+import { sticks } from './engrave.js';
+import { Your } from './display.js';
+import { some_mon_nam as some_mon_nam_fg } from './do_name.js';
 import { split_mon } from './potion.js';
 import { You, verbalize, You_hear } from './display.js';
 import { DEADMONSTER } from './mon.js';
@@ -167,6 +186,12 @@ import { resists_acid as resists_acid_pu, resists_ston as resists_ston_pu,
 import { erode_armor as erode_armor_pu } from './uhitm.js';
 import { acid_damage as acid_damage_pu } from './trap.js';
 import { attk_protection as attk_protection_pu } from './mhitm.js';
+import { mattackm as mattackm_mu } from './mhitm.js';
+import { dismount_steed as dismount_steed_mu } from './steed.js';
+import { Some_Monnam as Some_Monnam_mu } from './do_name.js';
+import { amorphous as amorphous_mu } from './mondata.js';
+import { M_ATTK_DEF_DIED as M_ATTK_DEF_DIED_MU,
+         DISMOUNT_ENGULFED as DISMOUNT_ENGULFED_MU } from './const.js';
 import { mon_to_stone as mon_to_stone_pu } from './mon.js';
 import { drain_item as drain_item_pu } from './zap.js';
 import { W_ARMG as W_ARMG_PU, ERODE_CORRODE as ERODE_CORRODE_PU } from './const.js';
@@ -699,21 +724,175 @@ export async function mattacku(mtmp) {
             /* Your steed won't attack you */
             return 0;
         /* Orcs like to steal and eat horses and the like */
-        if (!rn2(is_orc(mtmp.data) ? 2 : 4) && m_next2u(mtmp))
-            throw new Error('mattacku(): attacking hero\'s steed not ported yet');
+        if (!rn2(is_orc(mtmp.data) ? 2 : 4) && m_next2u(mtmp)) {
+            /* attack your steed instead; 'bhitpos' and 'notonhead' are
+               already set from targeting hero */
+            i = await mattackm_mu(mtmp, u.usteed);
+            if ((i & M_ATTK_AGR_DIED) !== 0)
+                return 1;
+            /* make sure steed is still alive and within range */
+            if ((i & M_ATTK_DEF_DIED_MU) !== 0 || !u.usteed
+                || !m_next2u(mtmp))
+                return 0;
+            /* Let your steed retaliate */
+            game.bhitpos.x = mtmp.mx, game.bhitpos.y = mtmp.my;
+            game.notonhead = false;
+            return !!((await mattackm_mu(u.usteed, mtmp)) & M_ATTK_DEF_DIED_MU) ? 1 : 0;
+        }
     }
 
-    if (u.uundetected && !v.range2 && v.foundyou && !u.uswallow)
-        throw new Error('mattacku(): hidden hero not ported yet');
+    /* Ugender */
+    const Ugender_mu = (Upolyd() ? u.mfemale : game.flags.female) ? 1 : 0;
+
+    if (u.uundetected && !v.range2 && v.foundyou && !u.uswallow) {
+        if (!canspotmon(mtmp))
+            map_invisible(mtmp.mx, mtmp.my);
+        u.uundetected = 0;
+        if (is_hider_mu(game.youmonst.data) && u.umonnum !== M.PM_TRAPPER) {
+            /* ceiling hider */
+            const cc = { x: 0, y: 0 }; /* maybe we need a unexto() function? */
+            let obj;
+
+            await You(`fall from the ${ceiling_mu(u.ux, u.uy)}!`);
+            /* take monster off map now so that its location
+               is eligible for placing hero; we assume that a
+               removed monster remembers its old spot <mx,my> */
+            remove_monster_at_mu(mtmp.mx, mtmp.my);
+            if (!enexto_mu(cc, u.ux, u.uy, game.youmonst.data)
+                /* a fish won't voluntarily swap positions
+                   when it's in water and hero is over land */
+                || (mtmp.data.mlet === M.S_EEL
+                    && is_pool(mtmp.mx, mtmp.my)
+                    && !is_pool(u.ux, u.uy))) {
+                /* couldn't find any spot for hero; this used to
+                   kill off attacker, but now we just give a "miss"
+                   message and keep both mtmp and hero at their
+                   original positions; hero has become unconcealed
+                   so mtmp's next move will be a regular attack */
+                place_monster(mtmp, mtmp.mx, mtmp.my); /* put back */
+                newsym(u.ux, u.uy); /* u.uundetected was toggled */
+                await pline_mon(mtmp, `${Monnam(mtmp)} draws back as you drop!`);
+                return 0;
+            }
+
+            /* put mtmp at hero's spot and move hero to <cc.x,.y> */
+            newsym(mtmp.mx, mtmp.my); /* finish removal */
+            place_monster(mtmp, u.ux, u.uy);
+            if (mtmp.wormno) {
+                worm_move_mu(mtmp);
+                /* tail hasn't grown, so if it now occupies <cc.x,.y>
+                   then one of its original spots must be free */
+                if (m_at_mu(cc.x, cc.y))
+                    enexto_mu(cc, u.ux, u.uy, game.youmonst.data);
+            }
+            await teleds_mu(cc.x, cc.y, TELEDS_ALLOW_DRAG_MU); /* move hero */
+            set_apparxy_mu(mtmp);
+            newsym(u.ux, u.uy);
+
+            if (game.youmonst.data.mlet !== M.S_PIERCER)
+                return 0; /* lurkers don't attack */
+
+            obj = which_armor_mu(mtmp, WORN_HELMET_MU);
+            if (hard_helmet_mu(obj)) {
+                await Your(`blow glances off ${s_suffix(mon_nam(mtmp))} ${
+                    helm_simple_name(obj)}.`);
+            } else {
+                if (3 + find_mac_mu(mtmp) <= rnd(20)) {
+                    await pline(`${Monnam(mtmp)} is hit by a falling piercer (you)!`);
+                    if ((mtmp.mhp -= d(3, 6)) < 1)
+                        await killed(mtmp);
+                } else
+                    await pline(`${Monnam(mtmp)} is almost hit by a falling piercer (you)!`);
+            }
+
+        } else {
+            /* surface hider */
+            if (!v.youseeit) {
+                await pline("It tries to move where you are hiding.");
+            } else {
+                /* Ugly kludge for eggs.  The message is phrased so as
+                 * to be directed at the monster, not the player,
+                 * which makes "laid by you" wrong.  For the
+                 * parallelism to work, we can't rephrase it, so we
+                 * zap the "laid by you" momentarily instead.
+                 */
+                const obj = level_objects_at_mu(u.ux, u.uy)[0] || null;
+
+                if (obj || u.umonnum === M.PM_TRAPPER
+                    || (game.youmonst.data.mlet === M.S_EEL
+                        && is_pool(u.ux, u.uy))) {
+                    let save_spe = 0; /* suppress warning */
+
+                    if (obj) {
+                        save_spe = obj.spe;
+                        if (obj.otyp === EGG_MU)
+                            obj.spe = 0;
+                    }
+                    /* note that m_monnam() overrides hallucination, which is
+                       what we want when message is from mtmp's perspective */
+                    if (game.youmonst.data.mlet === M.S_EEL
+                        || u.umonnum === M.PM_TRAPPER)
+                        await pline(`Wait, ${m_monnam_mu(mtmp)}!  There's a hidden ${
+                            pmname_mu(game.youmonst.data, Ugender_mu)} named ${game.plname}!`);
+                    else
+                        await pline(`Wait, ${m_monnam_mu(mtmp)}!  There's a ${
+                            pmname_mu(game.youmonst.data, Ugender_mu)} named ${
+                            game.plname} hiding under ${
+                            doname(level_objects_at_mu(u.ux, u.uy)[0])}!`);
+                    if (obj)
+                        obj.spe = save_spe;
+                } else
+                    impossible_mu("hiding under nothing?");
+            }
+            newsym(u.ux, u.uy);
+        }
+        return 0;
+    }
 
     /* hero might be a mimic, concealed via #monster */
-    if (game.youmonst.data.mlet === M.S_MIMIC && game.youmonst.m_ap_type
-        && !v.range2 && v.foundyou && !u.uswallow)
-        throw new Error('mattacku(): mimicking hero not ported yet');
+    if (game.youmonst.data.mlet === M.S_MIMIC
+        && (game.youmonst.m_ap_type || M_AP_NOTHING) !== M_AP_NOTHING
+        && !v.range2 && v.foundyou && !u.uswallow) {
+        const sticky = sticks(game.youmonst.data);
+
+        if (!canspotmon(mtmp))
+            map_invisible(mtmp.mx, mtmp.my);
+        if (sticky && !v.youseeit)
+            await pline("It gets stuck on you.");
+        else /* see note about m_monnam() above */
+            await pline(`Wait, ${m_monnam_mu(mtmp)}!  That's a ${
+                pmname_mu(game.youmonst.data, Ugender_mu)} named ${game.plname}!`);
+        if (sticky)
+            set_ustuck(mtmp);
+        game.youmonst.m_ap_type = M_AP_NOTHING;
+        game.youmonst.mappearance = 0;
+        newsym(u.ux, u.uy);
+        return 0;
+    }
 
     /* non-mimic hero might be mimicking an object after eating m corpse */
-    if (game.youmonst.m_ap_type && !v.range2 && v.foundyou && !u.uswallow)
-        throw new Error('mattacku(): hero mimicking an object not ported yet');
+    if (game.youmonst.m_ap_type === M_AP_OBJECT_MU && !v.range2 && v.foundyou
+        && !u.uswallow) {
+        if (!canspotmon(mtmp))
+            map_invisible(mtmp.mx, mtmp.my);
+        if (!v.youseeit)
+            await pline(`Something ${
+                (likes_gold_mu(mtmp.data)
+                 && game.youmonst.mappearance === GOLD_PIECE_MU)
+                ? "tries to pick you up"
+                : "disturbs you"}!`);
+        else /* see note about m_monnam() above */
+            await pline(`Wait, ${m_monnam_mu(mtmp)}!  That ${
+                mimic_obj_name(game.youmonst)} is really ${
+                an(pmname_mu(mons[u.umonnum], Ugender_mu))} named ${game.plname}!`);
+        if (game.multi < 0) { /* this should always be the case */
+            const buf = `You appear to be ${
+                Upolyd() ? an(pmname_mu(game.youmonst.data, game.flags.female ? 1 : 0))
+                         : "yourself"} again.`;
+            await unmul_mu(buf); /* immediately stop mimicking */
+        }
+        return 0;
+    }
 
     /*  Work out the armor class differential   */
     tmp = AC_VALUE(u.uac) + 10; /* tmp ~= 0 - 20 */
@@ -1222,7 +1401,7 @@ export async function gazemu(mtmp, mattk) {
                     await pline("You are getting more and more confused."); /* You() */
                 await make_confused_mh((u.uprops[CONFUSION_MH].intrinsic || 0) + conf,
                                        false);
-                stop_occupation();
+                await stop_occupation();
             }
         }
         break;
@@ -1238,7 +1417,7 @@ export async function gazemu(mtmp, mattk) {
                 await pline_mon(mtmp, `${Monnam(mtmp)} stares piercingly at you!`);
                 await make_stunned_mh(((u.uprops[STUNNED_MH].intrinsic || 0) & TIMEOUT_MH)
                                       + stun, true);
-                stop_occupation();
+                await stop_occupation();
             }
         }
         break;
@@ -1257,7 +1436,7 @@ export async function gazemu(mtmp, mattk) {
 
                 await pline(`You are blinded by ${s_suffix(mon_nam(mtmp))} radiance!`); /* You() */
                 await make_blinded(blnd, false);
-                stop_occupation();
+                await stop_occupation();
                 /* not blind at this point implies you're wearing
                    the Eyes of the Overworld; make them block this
                    particular stun attack too */
@@ -1283,7 +1462,7 @@ export async function gazemu(mtmp, mattk) {
                 const orig_dmg = dmg, lev = mtmp.m_lev;
 
                 await pline_mon(mtmp, `${Monnam(mtmp)} attacks you with a fiery gaze!`);
-                stop_occupation();
+                await stop_occupation();
                 if (Fire_resistance()) {
                     await shieldeff_mu(game.u.ux, game.u.uy);
                     await pline("The fire doesn't feel hot!"); /* pline_The() */
@@ -1424,7 +1603,9 @@ export async function failed_grab(magr, mdef, mattk) {
             if (!tailmiss) {
                 mdefnam = (mdef === game.youmonst) ? "you" : mon_nam(mdef);
             } else {
-                throw new Error('failed_grab(): long worm tail miss not ported yet');
+                /* hero poly'd into long worm can't grow tail
+                   so no 'youmonst' handling is needed here */
+                mdefnam = `${s_suffix(some_mon_nam_fg(mdef))} tail`;
             }
             /* unsolid grab misses are actually somewhat iffy--how come
                ordinary attacks don't also pass right through? */
@@ -1601,7 +1782,20 @@ async function gulpmu(mtmp, mattk) {
         newsym(mtmp.mx, mtmp.my);
         /* 5.0: dismount for all engulfers, not just for purple worms */
         if (u.usteed) {
-            throw new Error('gulpmu(): dismount_steed(DISMOUNT_ENGULFED) not ported yet');
+            const buf = mon_nam(u.usteed);
+
+            await urgent_pline(`${Some_Monnam_mu(mtmp)} ${
+                /* 't', purple 'w' */
+                is_animal(mtmp.data) ? "lunges"
+                  /* 'v', air 'E' */
+                  : is_whirly(mtmp.data) ? "whirls"
+                    /* none (some 'v', already whirling) */
+                    : unsolid(mtmp.data) ? "flows"
+                      /* ochre 'j', Juiblex */
+                      : amorphous_mu(mtmp.data) ? "oozes"
+                        /* none (all AT_ENGL are already covered) */
+                        : "surges"} forward and plucks you off ${buf}!`);
+            await dismount_steed_mu(DISMOUNT_ENGULFED_MU);
         } else {
             await urgent_pline(`${Monnam(mtmp)} ${
                 digests(mtmp.data) ? "swallows you whole"

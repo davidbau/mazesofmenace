@@ -16,6 +16,7 @@ import { set_configfile_for_session } from './cfgfiles.js';
 import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP, MAX_MSG_HISTORY, SYM_BOULDER, def_warnsyms } from './const.js';
 import { apply_customizations, glyphrep_to_custom_map_entries, purge_all_custom_entries, clear_all_glyphmap_colors, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js';
 import { free_all_glyphmap_u } from './utf8map.js';
+import { frameTextUtf8 } from './frame_utf8.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
@@ -666,8 +667,6 @@ export class NethackGame {
                 if (cap.cursor) nhGame._cursors[last] = cap.cursor;
             }
             nhGame._rngSlices.push(slice);
-            (nhGame._bndScreens ||= []).push(nhGame._screens.length);
-            (nhGame._bndMoreMark ||= []).push(game._moreRngMark ?? game._moreParkMark ?? null);
             nhGame._animByStep.push(animFrames);
             // Keep the marker through stale brown-mold frames; clear it only
             if (/^(?:[^\n]*?\s)?You return to \w+ form/.test(String(game._screen_output || '').split('\n', 1)[0]))
@@ -691,12 +690,24 @@ export class NethackGame {
         while (n > 0 && this._screens[n - 1] === '') n--;
         return n;
     }
-    getScreens() { const n = this._trailingEmptyCaptures(); return n === this._screens.length ? this._screens : this._screens.slice(0, n); }
+    _judgeFrames(arr, n, cache) {
+        const out = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const s = arr[i];
+            if (cache.raw[i] !== s) { cache.raw[i] = s; cache.dec[i] = frameTextUtf8(s); }
+            out[i] = cache.dec[i];
+        }
+        return out;
+    }
+    getScreens() { return this._judgeFrames(this._screens, this._trailingEmptyCaptures(), (this._screensDec ||= { raw: [], dec: [] })); }
     getCursors() { const n = this._trailingEmptyCaptures(); return n === this._cursors.length ? this._cursors : this._cursors.slice(0, n); }
     getRngLog() { return getRngLog(); }
-    /* Supplemental channel (API "Animation frames"): one inner list per
-     * recorded step, aligned with the input boundaries. */
-    getAnimationFramesByStep() { return this._animByStep; }
+    getAnimationFramesByStep() {
+        return this._animByStep.map((fs) => (fs || []).map((f) => {
+            const t = frameTextUtf8(f?.screen);
+            return t === f?.screen ? f : { ...f, screen: t };
+        }));
+    }
 }
 export async function gameFromSession(sessionData) {
     // C ref: calendar.c getnow(), as 001-deterministic-runtime.patch rewrites it —
@@ -1034,38 +1045,8 @@ export async function runSegment(input, prevGame = null) {
     display.onEmptyQueue = () => { throw new Error('Input queue empty'); };
     nhGame._pendingDisplay = display;
     const _moves = String(input.moves || '');
-    const _utf8 = [..._moves].some((ch) => ch.codePointAt(0) > 0xff);
-    /* ...but the recording keeps one step per UTF-16 unit of the moves
-     * string (an astral character is two steps): frames are paired with reads
-     * in order and the reads past the last step are dropped with their draws.
-     * Mac macx2 arm t24-g-nonascii-v018: 302 units (299 characters, three
-     * U+10348), 303 steps. */
-    const _keep = _moves.length + 1;
-    const _capUtf8 = () => {
-        const b = nhGame._bndScreens || [];
-        if (!_utf8 || b.length <= _keep) return nhGame;
-        const nScreens = b[_keep - 1];
-        nhGame._screens.length = Math.min(nhGame._screens.length, nScreens);
-        nhGame._cursors.length = Math.min(nhGame._cursors.length, nScreens);
-        nhGame._animByStep.length = Math.min(nhGame._animByStep.length, _keep);
-        let nRng = 0;
-        for (let i = 0; i < _keep; i++) nRng += nhGame._rngSlices[i].length;
-        /* the last kept frame is a --More-- C raised inside a pline: C is
-         * blocked there and drew nothing past that pline (as the queue-empty
-         * trim below), while this port ran on ahead of paging. */
-        const mark = nhGame._bndMoreMark?.[_keep - 1];
-        if (mark != null) nRng = Math.min(nRng, mark);
-        nhGame._rngSlices.length = _keep;
-        const log = getRngLog();
-        if (log) log.length = Math.min(log.length, nRng);
-        return nhGame;
-    };
-    for (const ch of _moves) {
-        if (_utf8 && ch.codePointAt(0) >= 0x80) {
-            for (const b of new TextEncoder().encode(ch)) display.pushKey(b);
-            continue;
-        }
-        const k = ch.charCodeAt(0);
+    for (let i = 0; i < _moves.length; i++) {
+        const k = _moves.charCodeAt(i) & 0xff;
         display.pushKey(k === 0x0d ? 0x0a : k);
     }
     const quiet = (e) => {
@@ -1079,12 +1060,12 @@ export async function runSegment(input, prevGame = null) {
                 const log = getRngLog();
                 if (log) log.length = Math.min(log.length, nhGame._lastRngIdx | 0);
             }
-            return _capUtf8();
+            return nhGame;
         }
         quiet(e);
         // C unixmain.c:289-320 completes player_selection() and newgame()
         // before entering moveloop(). Exhausted startup input leaves those
-        return _capUtf8();
+        return nhGame;
     }
     // C ref: allmain.c:59 moveloop() — `for (;;) { moveloop_core(); }`.  One
     // moveloop_core() call is ONE command, not the whole game: C keeps calling
@@ -1141,5 +1122,5 @@ export async function runSegment(input, prevGame = null) {
             break;
         }
     }
-    return _capUtf8();
+    return nhGame;
 }

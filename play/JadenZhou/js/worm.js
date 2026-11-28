@@ -24,6 +24,10 @@ import { Sfo, Sfi } from './sfbase.js';
 import { update_file, release_data } from './save.js';
 import { clone_mon } from './makemon.js';
 import { Monnam } from './do_name.js';
+import { what_mon, newsym_rn2, show_glyph_cell } from './display.js';
+import { PM_LONG_WORM_TAIL } from './monsters.js';
+import { NO_COLOR, ATR_INVERSE } from './terminal.js';
+import { def_monsyms as def_monsyms_wm } from './drawing.js';
 
 /* C ref: global.h MAX_NUM_WORMS */
 export const MAX_NUM_WORMS = 32;
@@ -465,6 +469,33 @@ export function see_wsegs(worm) {
 
     while (curr !== g.wheads[worm.wormno]) {
         newsym(curr.wx, curr.wy);
+        curr = curr.nseg;
+    }
+}
+
+// C ref: worm.c detect_wsegs()
+/*
+ *  Display all of the segments of the given worm for detection.
+ */
+export function detect_wsegs(worm, use_detection_glyph) {
+    const g = W();
+    let curr = g.wtails[worm.wormno];
+    const what_tail = what_mon(PM_LONG_WORM_TAIL, newsym_rn2);
+    const ptr = mons[what_tail];
+
+    while (curr !== g.wheads[worm.wormno]) {
+        /* num = use_detection_glyph ? detected_monnum_to_glyph(what_tail, ...)
+                 : worm->mtame ? petnum_to_glyph(what_tail, ...)
+                   : monnum_to_glyph(what_tail, ...);
+           a detected glyph has MG_DETECT (shown in inverse when use_inverse
+           is on), a pet glyph MG_PET (iflags.wc2_petattr under hilite_pet) */
+        const attr = use_detection_glyph
+                     ? ((game.iflags?.wc_inverse !== false) ? ATR_INVERSE : 0)
+                     : (worm.mtame && game.iflags?.wc_hilite_pet)
+                       ? game.iflags.wc2_petattr : 0;
+        show_glyph_cell(curr.wx, curr.wy, def_monsyms_wm[ptr.mlet] ?? '?',
+                        ptr.mcolor ?? NO_COLOR, false, attr, 'mon', false,
+                        { mndx: what_tail });
         curr = curr.nseg;
     }
 }

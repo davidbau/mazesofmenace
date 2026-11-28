@@ -10,7 +10,8 @@ import { There } from './display.js';
 import { impossible } from './hack.js';
 import { nhcb_counts, nhcb_name } from './nhlua.js';
 import { NHCB_CMD_BEFORE } from './const.js';
-import { dobreathe, dospit } from './polyself.js';
+import { dobreathe, dospit, dohide, doremove, dosummon,
+         domindblast, dospinweb, dogaze } from './polyself.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, You_cant, You } from './display.js';
@@ -66,7 +67,7 @@ import { dofire, dothrow } from './dothrow.js';
 import { dokick } from './dokick.js';
 import { doswapweapon, dowieldquiver, dowield, dotwoweapon } from './wield.js';
 import { enhance_weapon_skill } from './weapon.js';
-import { doapply, dorub, dojump } from './apply.js';
+import { doapply, dorub, dojump, use_unicorn_horn } from './apply.js';
 import { dountrap } from './trap.js';
 import { doeat } from './eat.js';
 import { dowear, doputon, dotakeoff, ia_dotakeoff, doddoremarm } from './do_wear.js';
@@ -874,17 +875,17 @@ async function domonability() {
     else if (attacktype(uptr, AT_SPIT))
         return await dospit();
     else if (uptr.mlet === S_NYMPH)
-        throw new Error('domonability(): doremove() not ported yet');
+        return await doremove();
     else if (attacktype(uptr, AT_GAZE))
-        throw new Error('domonability(): dogaze() not ported yet');
+        return await dogaze();
     else if (is_were(uptr))
-        throw new Error('domonability(): dosummon() not ported yet');
+        return await dosummon();
     else if ((c !== '\0') ? c === 'h' : might_hide)
-        throw new Error('domonability(): dohide() not ported yet');
+        return await dohide();
     else if ((c !== '\0') ? c === 's' : webmaker(uptr))
-        throw new Error('domonability(): dospinweb() not ported yet');
+        return await dospinweb();
     else if (is_mind_flayer(uptr))
-        throw new Error('domonability(): domindblast() not ported yet');
+        return await domindblast();
     else if (u.umonnum === PM_GREMLIN) {
         if (IS_FOUNTAIN(game.level.at(u.ux, u.uy).typ)) {
             if (await split_mon(game.youmonst, null))
@@ -897,7 +898,8 @@ async function domonability() {
             await There("is no fountain here.");
         }
     } else if (is_unicorn(uptr)) {
-        throw new Error('domonability(): use_unicorn_horn() not ported yet');
+        await use_unicorn_horn(null);
+        return ECMD_TIME;
     } else if (uptr.msound === MS_SHRIEK) {
         await You("shriek.");
         if (u.uburied)

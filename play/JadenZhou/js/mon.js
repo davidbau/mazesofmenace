@@ -181,6 +181,13 @@ import { stinky_nemesis } from './questpgr.js';
 import { Hallucination, Conflict, Deaf } from './youprop.js';
 import { m_next2u } from './const.js';
 import { uhis, unstuck } from './mhitu.js';
+import { ledger_no as ledger_no_mn } from './dungeon.js';
+import { migrate_to_level as migrate_to_level_mn, mon_has_amulet as mon_has_amulet_mn } from './dog.js';
+import { is_home_elemental as is_home_elemental_mn } from './makemon.js';
+import { MIGR_APPROX_XY as MIGR_APPROX_XY_MN, MIGR_RANDOM as MIGR_RANDOM_MN,
+         MON_LIMBO as MON_LIMBO_MN, MON_OBLITERATE as MON_OBLITERATE_MN,
+         MON_ENDGAME_MIGR as MON_ENDGAME_MIGR_MN, Is_astralevel as Is_astralevel_mn,
+         has_emin as has_emin_mn, has_epri as has_epri_mn, has_eshk as has_eshk_mn } from './const.js';
 import { m_unleash, leashable } from './apply.js';
 import { obj_extract_self } from './mkobj.js';
 import { possibly_unwield } from './weapon.js';
@@ -207,7 +214,7 @@ import { killer as killer_mn } from './topten.js';
 import { losehp as losehp_mn, Maybe_Half_Phys as Maybe_Half_Phys_mn } from './trap.js';
 import { mon_explodes } from './explode.js';
 import { shkgone } from './shk.js';
-import { gd_move } from './vault.js';
+import { gd_move, grddead } from './vault.js';
 import { rloc_to as rloc_to_mn } from './teleport.js';
 import { place_wsegs as place_wsegs_rm } from './worm.js';
 import { set_ustuck as set_ustuck_rm } from './uhitm.js';
@@ -217,7 +224,9 @@ import { obj_resists } from './dogmove.js';
 import { end_burn } from './timeout.js';
 import { add_to_container, weight } from './mkobj.js';
 import { digests } from './mondata.js';
-import { You } from './display.js';
+import { You, swallowed } from './display.js';
+import { sticks } from './engrave.js';
+import { unsolid } from './mondata.js';
 import { u_locomotion } from './trap.js';
 import { STATUE, ROCK, GLOB_OF_BLACK_PUDDING } from './objects.js';
 import { obj_nexto } from './mkobj.js';
@@ -324,7 +333,7 @@ async function m_calcdistress(mtmp) {
 /* C ref: monst.h DEADMONSTER() */
 export function DEADMONSTER(mon) { return mon.mhp < 1; }
 
-// C ref: mon.c mongone() -- the vault guard case is not ported; unstuck()
+// C ref: mon.c mongone() -- the vault guard case is mongone_async(); unstuck()
 // is checked in mon_leaving_level().
 /* remove a monster from the game without leaving a corpse */
 export function mongone(mdef) {
@@ -333,7 +342,7 @@ export function mongone(mdef) {
     /* dead vault guard is actually kept at coordinate <0,0> until
        his temporary corridor to/from the vault has been removed */
     if (mdef.isgd)
-        throw new Error('mongone: vault guards are not ported yet');
+        throw new Error('mongone(): a vault guard outside mongone_async() not ported yet');
     /* stuck to you? release: unstuck(mdef) -- see mon_leaving_level() */
     /* drop special items like the Amulet so that a dismissed Kop or nurse
        can't remove them from the game */
@@ -341,6 +350,19 @@ export function mongone(mdef) {
     /* release rest of monster's inventory--it is removed from game */
     discard_minvent(mdef, false);
     m_detach(mdef, mdef.data, false);
+}
+
+// C ref: mon.c mongone() -- the vault guard case: grddead() is async (it
+// can print and relocate monsters), so a caller that can reach a guard
+// awaits this instead of mongone()
+export async function mongone_async(mdef) {
+    mdef.mhp = 0; /* can skip some inventory bookkeeping */
+
+    /* dead vault guard is actually kept at coordinate <0,0> until
+       his temporary corridor to/from the vault has been removed */
+    if (mdef.isgd && !(await grddead(mdef)))
+        return;
+    mongone(mdef);
 }
 
 // C ref: mon.c mon_leaving_level()
@@ -449,7 +471,7 @@ export async function mnearto(
                  * and this would shortly cause a sanity check to fail
                  * if we just return 0 here. The caller only possesses
                  * awareness of mtmp, not othermon. */
-                deal_with_overcrowding(othermon);
+                await deal_with_overcrowding(othermon);
             }
             return 0;
         }
@@ -463,7 +485,7 @@ export async function mnearto(
         res = 2; /* moving another monster out of the way */
         /* 'move_other'==FALSE this time; fail rather than recurse */
         if (!(await mnearto(othermon, x, y, false, rlocflags)))
-            deal_with_overcrowding(othermon);
+            await deal_with_overcrowding(othermon);
         else /* place_monster() sets mstate = MON_FLOOR */
             othermon.mstate &= ~MON_OFFMAP;
     }
@@ -471,12 +493,132 @@ export async function mnearto(
     return res;
 }
 
+// C ref: mon.c m_into_limbo()
+/* drop monster into "limbo" - that is, migrate to the current level */
+export async function m_into_limbo(mtmp) {
+    const target_lev = ledger_no_mn(game.u.uz), xyloc = MIGR_APPROX_XY_MN;
+
+    mtmp.mstate = (mtmp.mstate || 0) | MON_LIMBO_MN;
+    await migrate_mon(mtmp, target_lev, xyloc);
+}
+
+// C ref: mon.c migrate_mon()
+export async function migrate_mon(
+    mtmp,
+    target_lev, /* destination level */
+    xyloc)      /* MIGR_xxx flag for location within destination */
+{
+    /*
+     * If mtmp->mx is zero, this was a failed arrival attempt from a
+     * prior migration and mtmp isn't on the map.  In that situation
+     * it can't be engulfing or holding the hero or held by same and
+     * should have dropped any special objects during that earlier
+     * migration back when it had a valid map location.  So only
+     * perform some actions when mx is non-zero.
+     */
+    if (mtmp.mx) {
+        await unstuck(mtmp);
+        mdrop_special_objs(mtmp);
+    }
+    await migrate_to_level_mn(mtmp, target_lev, xyloc, null);
+}
+
+// C ref: mon.c ok_to_obliterate()
+function ok_to_obliterate(mtmp) {
+    /*
+     * Add checks for monsters that should not be obliterated
+     * here (return FALSE).
+     */
+    if (mtmp.data === MM.mons[MM.PM_WIZARD_OF_YENDOR] || is_rider(mtmp.data)
+        || has_emin_mn(mtmp) || has_epri_mn(mtmp) || has_eshk_mn(mtmp)
+        || mtmp === game.u.ustuck || mtmp === game.u.usteed)
+        return false;
+    return true;
+}
+
+// C ref: mon.c elemental_clog()
+export async function elemental_clog(mon) {
+    const g = game;
+    const u = g.u;
+    /* static long msgmv: per-game state, kept in game */
+    let m_lev = 0;
+    let mtmp, m1, m2, m3, m4, m5, zm;
+
+    if (In_endgame(u.uz)) {
+        m1 = m2 = m3 = m4 = m5 = zm = null;
+        if (!g.elemental_clog_msgmv || (g.moves - g.elemental_clog_msgmv) > 200) {
+            if (!g.elemental_clog_msgmv || rn2(2))
+                await You_feel("besieged.");
+            g.elemental_clog_msgmv = g.moves;
+        }
+        /*
+         * m1 an elemental from another plane.
+         * m2 an elemental from this plane.
+         * m3 the least powerful monst encountered in loop so far.
+         * m4 some other non-tame monster.
+         * m5 a pet.
+         */
+        for (mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
+            if (DEADMONSTER(mtmp) || mtmp === mon)
+                continue;
+            if (mtmp.mx === 0 && mtmp.my === 0)
+                continue;
+            if (mon_has_amulet_mn(mtmp) || !ok_to_obliterate(mtmp))
+                continue;
+            if (mtmp.data.mlet === MM.S_ELEMENTAL) {
+                if (!is_home_elemental_mn(mtmp.data)) {
+                    if (!m1)
+                        m1 = mtmp;
+                } else {
+                    if (!m2)
+                        m2 = mtmp;
+                }
+            } else {
+                if (!mtmp.mtame) {
+                    if (!m_lev || mtmp.m_lev < m_lev) {
+                        m_lev = mtmp.m_lev;
+                        m3 = mtmp;
+                    } else if (!m4) {
+                        m4 = mtmp;
+                    }
+                } else {
+                    if (!m5)
+                        m5 = mtmp;
+                    break;
+                }
+            }
+        }
+        mtmp = m1 ? m1 : m2 ? m2 : m3 ? m3 : m4 ? m4 : m5 ? m5 : zm;
+        if (mtmp) {
+            const mx = mtmp.mx, my = mtmp.my;
+
+            mtmp.mstate = (mtmp.mstate || 0) | MON_OBLITERATE_MN;
+            await mongone_async(mtmp);
+            /* places in the code might still reference mtmp->mx, mtmp->my */
+            /* mtmp->mx = mtmp->my = 0; */
+            await rloc_to_mn(mon, mx, my);   /* note: mon, not mtmp */
+
+        /* last resort - migrate mon to the next plane */
+        } else if (!Is_astralevel_mn(u.uz)) {
+            const dest = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
+
+            dest.dlevel--;
+            const target_lev = ledger_no_mn(dest);
+            mon.mstate = (mon.mstate || 0) | MON_ENDGAME_MIGR_MN;
+            await migrate_mon(mon, target_lev, MIGR_RANDOM_MN);
+        }
+    }
+}
+
 // C ref: mon.c deal_with_overcrowding()
-function deal_with_overcrowding(mtmp) {
-    if (In_endgame(game.u.uz))
-        throw new Error('deal_with_overcrowding(): elemental_clog() not ported yet');
-    else
-        throw new Error('deal_with_overcrowding(): m_into_limbo() not ported yet');
+export async function deal_with_overcrowding(mtmp) {
+    if (In_endgame(game.u.uz)) {
+        /* debugpline1("overcrowding: elemental_clog on %s", ...) */
+        await elemental_clog(mtmp);
+    } else {
+        /* debugpline1("overcrowding: sending %s into limbo", ...) */
+        await m_into_limbo(mtmp);
+    }
 }
 
 // C ref: mon.c replmon()
@@ -772,8 +914,11 @@ export async function mondead(mtmp) {
     if (mtmp.data === mons[PM_STEAM_VORTEX])
         await create_gas_cloud(mtmp.mx, mtmp.my, rn2(10) + 5, 0); /* harmless */
 
-    if (mtmp.isgd)
-        throw new Error('mondead(): grddead() not ported yet');
+    /* dead vault guard is actually kept at coordinate <0,0> until
+       his temporary corridor to/from the vault has been removed;
+       need to do this after life-saving and before m_detach() */
+    if (mtmp.isgd && !(await grddead(mtmp)))
+        return;
 
     const mptr = mtmp.data; /* save this for m_detach() */
     /* restore chameleon, lycanthropes to true form at death */
@@ -1929,7 +2074,7 @@ async function minliquid_core(mtmp) {
                                                          : null,
                                             false, false, mtmp.mx, mtmp.my);
                     if (!(await rloc(mtmp, RLOC_MSG)))
-                        throw new Error('minliquid(): deal_with_overcrowding() not ported yet');
+                        await deal_with_overcrowding(mtmp);
                 }
                 return 0;
             }
@@ -2537,12 +2682,10 @@ const newcham_g = ({ *newcham(mtmp, mdat, ncflags) {
         oldname = highc(oldname[0]) + oldname.slice(1);
     }
     /* we need this one whether msg is true or not (under hallucination
-       x_monnam() draws a random name from the display rng); l_oldname is
-       only used by the engulfing case, which isn't ported yet */
+       x_monnam() draws a random name from the display rng) */
     const l_oldname = x_monnam(mtmp, ARTICLE_THE, null,
                                has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
                                false);
-    void l_oldname;
 
     /* mdat = 0 -> caller wants a random monster shape */
     if (!mdat) {
@@ -2633,8 +2776,46 @@ const newcham_g = ({ *newcham(mtmp, mdat, ncflags) {
     mtmp.minvis = mtmp.invis_blkd ? 0 : mtmp.perminvis;
     if (mtmp.mundetected)
         hideunder(mtmp);
-    if (game.u.ustuck === mtmp)
-        throw new Error('newcham(): engulfing/sticky hero not ported yet');
+    if (game.u.ustuck === mtmp) {
+        if (game.u.uswallow) {
+            if (!attacktype(mdat, MM.AT_ENGL)) {
+                /* Does mdat care? */
+                if (!noncorporeal_vr(mdat) && !is_whirly(mdat)
+                    && !(amorphous(mdat) || mdat.mlet === MM.S_LIGHT)) {
+                    let msgtrail;
+
+                    if (is_vampshifter(mtmp)) {
+                        msgtrail = ` which was a shapeshifted ${
+                            noname_monnam(mtmp, ARTICLE_NONE)}`;
+                    } else if (digests(mdat)) {
+                        msgtrail = "'s stomach";
+                    } else {
+                        msgtrail = '';
+                    }
+                    /* Do this even if msg is FALSE */
+                    const umsg = `${(amorphous(olddata) || is_whirly(olddata))
+                                    ? "emerge from" : "break out of"} ${
+                                  l_oldname}${msgtrail}!`;
+                    yield { newcham_async: () => You(umsg), what: 'You()' };
+                    msg = false; /* message has been given */
+                    mtmp.mhp = 1; /* almost dead */
+                }
+                yield { newcham_async: () => expels_vr(mtmp, olddata, false),
+                        what: 'expels()' };
+            } else {
+                /* update swallow glyphs for new monster */
+                yield { newcham_async: () => swallowed(0), what: 'swallowed()' };
+            }
+        } else if ((!sticks(mdat) && !sticks(game.youmonst.data))
+                   /* sticky hero can't continue to hold mtmp if it has
+                      turned into a non-solid creature; we don't use
+                      uunstick() for that because its message would be
+                      shown out of sequence [before 'if (msg)' below];
+                      unstuck() doesn't issue any messages */
+                   || unsolid(mdat)) {
+            yield { newcham_async: () => unstuck(mtmp), what: 'unstuck()' };
+        }
+    }
 
     if (mdat === mons[MM.PM_LONG_WORM] && (mtmp.wormno = get_wormno()) !== 0) {
         initworm(mtmp, rn2(5));
@@ -3408,7 +3589,7 @@ function kill_eggs(obj_list) {
 
 // C ref: mon.c kill_genocided_monsters()
 /* kill all members of genocided species */
-export function kill_genocided_monsters() {
+export async function kill_genocided_monsters() {
     const g = game;
     let mtmp, mtmp2;
     let kill_cham;
@@ -3422,8 +3603,11 @@ export function kill_genocided_monsters() {
         kill_cham = (mtmp.cham !== undefined && mtmp.cham >= LOW_PM /* ismnum() */
                      && (g.mvitals[mtmp.cham].mvflags & G_GENOD));
         if ((g.mvitals[mndx].mvflags & G_GENOD) || kill_cham) {
-            /* newcham(mtmp, NULL, NC_SHOW_MSG) or mondead(mtmp) */
-            throw new Error('kill_genocided_monsters(): removing genocided monsters not ported yet');
+            if ((mtmp.cham !== undefined && mtmp.cham >= LOW_PM) /* ismnum() */
+                && !kill_cham)
+                await newcham(mtmp, null, NC_SHOW_MSG);
+            else
+                await mondead(mtmp);
         }
         if (mtmp.minvent)
             kill_eggs(mtmp.minvent);

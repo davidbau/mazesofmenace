@@ -32,6 +32,8 @@ function initial_globals() {
         /* decl.c gb.bhitpos: a zero-initialized global coord that
            launch_obj() and others write field by field */
         bhitpos: { x: 0, y: 0 },
+        /* mon.c elemental_clog() static long msgmv = 0L */
+        elemental_clog_msgmv: 0,
     };
 }
 

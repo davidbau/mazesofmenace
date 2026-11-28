@@ -3854,7 +3854,26 @@ async function domove_core() {
 
     if (mtmp) {
         if (displaceu.val) {
-            throw new Error('domove_core(): displacer beast swap not ported yet');
+            const noticed_it = (canspotmon(mtmp)
+                                || glyph_is_invisible(glyph)
+                                || glyph_is_warning(glyph));
+
+            /* remove_monster(u.ux, u.uy); place_monster(mtmp, u.ux0, u.uy0) */
+            place_monster(mtmp, u.ux0, u.uy0);
+            newsym(u.ux, u.uy);
+            newsym(u.ux0, u.uy0);
+            /* monst still knows where hero is */
+            mtmp.mux = u.ux, mtmp.muy = u.uy;
+
+            await pline(`${!noticed_it ? "Something" : YMonnam(mtmp)} swaps places with you...`);
+            if (!canspotmon(mtmp))
+                map_invisible(u.ux0, u.uy0);
+            /* monster chose to swap places; hero doesn't get any credit
+               or blame if something bad happens to it */
+            game.context.mon_moving = 1;
+            if (!(await minliquid(mtmp)))
+                await mintrap(mtmp, NO_TRAP_FLAGS);
+            game.context.mon_moving = 0;
         /*
          * If safepet at destination then move the pet to the hero's
          * previous location using the same conditions as in do_attack().

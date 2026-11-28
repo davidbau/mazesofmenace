@@ -1690,7 +1690,7 @@ export function makemon(ptr, x, y, mmflags) {
                    create_particular() does so far; for other callers the
                    message is not ported yet */
                 if (game.makemon_want_msg)
-                    game.makemon_msg = msg;
+                    (game.makemon_pending ||= []).push({ msg });
             }
         }
         /* if discernable and a threat, stop fiddling while Rome burns */
@@ -1699,7 +1699,7 @@ export function makemon(ptr, x, y, mmflags) {
                so like the message above it is handed to the caller, which
                runs it right after the message in makemon_flush_msg() */
             if (game.makemon_want_msg)
-                game.makemon_dochugw = mtmp;
+                (game.makemon_pending ||= []).push({ mtmp });
             else
                 throw new Error('makemon(): dochugw() for an occupied hero not ported yet');
         }
@@ -1713,18 +1713,19 @@ export function makemon(ptr, x, y, mmflags) {
 /* C ref: zap.c BOLT_LIM */
 const BOLT_LIM = 8;
 
-// makemon()'s "<mon> appears" message, printed by the caller once makemon()
-// returns (see the Norep() comment in makemon())
+// makemon()'s "<mon> appears" messages and its dochugw(mtmp, FALSE) calls
+// for an occupied hero, run by the caller once makemon() returns (see the
+// Norep() comment in makemon()); kept in C's order, so the members of a
+// group (m_initgrp()'s nested makemon() calls) come before their leader
 export async function makemon_flush_msg() {
-    const msg = game.makemon_msg;
-    game.makemon_msg = null;
-    if (msg)
-        await Norep(msg); /* C: Norep("%s%s %s%s%c", ...) */
-    /* and makemon()'s dochugw(mtmp, FALSE) for an occupied hero */
-    const mtmp = game.makemon_dochugw;
-    game.makemon_dochugw = null;
-    if (mtmp)
-        await dochugw(mtmp, false);
+    const pending = game.makemon_pending || [];
+    game.makemon_pending = [];
+    for (const p of pending) {
+        if (p.msg)
+            await Norep(p.msg); /* C: Norep("%s%s %s%s%c", ...) */
+        else
+            await dochugw(p.mtmp, false);
+    }
 }
 
 // C ref: monst.h STRAT_* bits

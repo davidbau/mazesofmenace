@@ -37,7 +37,7 @@ import { do_clear_area_async, couldsee, cansee } from './vision.js';
 import { set_levltyp } from './mkmaze.js';
 import { del_engr_at } from './engrave.js';
 import { minliquid, angry_guards } from './mon.js';
-import { mksobj_at, mkobj_at, mkobj, rnd_class, curse, uncurse, bless,
+import { mksobj_at, mkobj_at, mkobj, rnd_class, curse_async, uncurse, bless,
          mkgold, level_objects_at } from './mkobj.js';
 import { exercise, adjattrib, poison_strdmg, ACURR } from './attrib.js';
 import { in_town } from './hack.js';
@@ -400,7 +400,7 @@ export async function drinkfountain() {
             for (obj = game.invent; obj; obj = nextobj) {
                 nextobj = obj.nobj;
                 if (obj.oclass !== COIN_CLASS && !obj.cursed && !rn2(5)) {
-                    curse(obj);
+                    await curse_async(obj);
                     ++buc_changed;
                 }
             }
@@ -483,7 +483,7 @@ export async function dipfountain(obj) {
             await pline(`A freezing mist rises from the ${hliquid("water")
                         } and envelopes the sword.`);
             await pline_The("fountain disappears!");
-            curse(obj);
+            await curse_async(obj);
             if (obj.spe > -6 && !rn2(3))
                 obj.spe--;
             obj.oerodeproof = 0;
@@ -525,7 +525,7 @@ export async function dipfountain(obj) {
     switch (rnd(30)) {
     case 16: /* Curse the item */
         if (!is_hands && obj.oclass !== COIN_CLASS && !obj.cursed) {
-            curse(obj);
+            await curse_async(obj);
         }
         break;
     case 17:

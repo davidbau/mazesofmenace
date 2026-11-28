@@ -43,7 +43,7 @@ import { shkname, shkname_is_pname } from './shknam.js';
 import { an, the_unique_pm } from './objnam.js';
 import { is_vampshifter, type_is_pname } from './mondata.js';
 import { strstri, upstart, plur } from './hacklib.js';
-import { zombie_maker, mongone } from './mon.js';
+import { zombie_maker, mongone, mongone_async } from './mon.js';
 import { night, midnight, getnow } from './calendar.js';
 import { can_make_bones, savebones } from './bones.js';
 import { paybill, finish_paybill } from './shk.js';
@@ -87,7 +87,10 @@ import { the_unique_obj as the_unique_obj_en } from './objnam.js';
 import { mon_nam as mon_nam_en } from './do_name.js';
 import { adj_lev as adj_lev_en } from './makemon.js';
 import { mons as mons_en, PM_HOUSECAT as PM_HOUSECAT_EN } from './monsters.js';
-import { d as d_en } from './rng.js';
+import { d as d_en, rn2 } from './rng.js';
+import { mnexto } from './teleport.js';
+import { freeinv } from './invent.js';
+import { RLOC_NOMSG, FEMALE, MALE } from './const.js';
 import { mksobj as mksobj_en } from './mkobj.js';
 import { obfree as obfree_en } from './invent.js';
 import { expels, unstuck } from './mhitu.js';
@@ -779,14 +782,49 @@ export async function done(how) {
 }
 
 // C ref: vault.c paygd()
+/* Routine when dying or quitting with a vault guard around */
 async function paygd(silently) {
+    const g = game, u = g.u;
     const grd = findgd();
-    const umoney = money_cnt(game.invent);
+    const umoney = money_cnt(g.invent);
+    let coins, nextcoins;
+    let gdx, gdy;
+    let buf;
 
-    void silently;
     if (!umoney || !grd)
         return;
-    throw new Error('paygd(): a vault guard taking the gold not ported yet');
+
+    remove_guard: {
+        if (u.uinvault) {
+            if (!silently)
+                await Your(`${umoney} ${currency(umoney)} goes into the Magic Memory Vault.`);
+            gdx = u.ux;
+            gdy = u.uy;
+        } else {
+            if (grd.mpeaceful) /* peaceful guard has no "right" to your gold */
+                break remove_guard;
+
+            await mnexto(grd, RLOC_NOMSG);
+            if (!silently)
+                await pline(`${Monnam_end(grd)} remits your gold to the vault.`);
+            gdx = g.level.rooms[grd.egd.vroom].lx + rn2(2);
+            gdy = g.level.rooms[grd.egd.vroom].ly + rn2(2);
+            buf = `To Croesus: here's the gold recovered from ${g.plname} the ${
+                pmname(mons[u.umonster], g.flags.female ? FEMALE : MALE)}.`;
+            make_grave(gdx, gdy, buf);
+        }
+        for (coins = g.invent; coins; coins = nextcoins) {
+            nextcoins = coins.nobj;
+            if (O_EN.objects[coins.otyp].oc_class === O_EN.COIN_CLASS) {
+                freeinv(coins);
+                place_object(coins, gdx, gdy);
+                stackobj(coins);
+            }
+        }
+    }
+    /* remove_guard: */
+    await mongone_async(grd);
+    return;
 }
 
 // C ref: priest.c clearpriests()

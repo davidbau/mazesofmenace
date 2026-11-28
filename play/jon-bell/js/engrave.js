@@ -1478,7 +1478,7 @@ async function _pline_paged(msg, last, redrawPending) {
         if (game._pending_message && game._pending_message.length > 0)
             await pline(msg);
         else
-            _result_append_join(game, msg);
+            await _result_append_join(game, msg);
         return;
     }
     if (last && !redrawPending && wouldWrap) {

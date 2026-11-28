@@ -597,7 +597,7 @@ export async function mhitm_ad_stck(magr, mattk, mdef, mhm) {
 // C ref: uhitm.c mhitm_really_poison()
 /* Helper for mhitm_ad_drst(), containing some code that is also called from
    mhitm_ad_phys() */
-async function mhitm_really_poison(magr, mattk, mdef, mhm) {
+export async function mhitm_really_poison(magr, mattk, mdef, mhm) {
     const vis = game.mhitm_vis;
     if (vis && canspotmon(magr))
         await pline(`${s_suffix(Monnam(magr))} ${mpoisons_subj(magr, mattk)} was poisoned!`);
@@ -1679,7 +1679,7 @@ async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
 }
 
 // C ref: uhitm.c mhitm_ad_blnd()
-async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
+export async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
         /* uhitm */
         if (can_blnd(magr, mdef, mattk.aatyp, null)) {
@@ -3179,7 +3179,7 @@ function is_blunt_weapon(o) {
            && (objects[o.otyp].oc_dir & WHACK) !== 0;
 }
 /* C ref: monst.h troll_baned() */
-function troll_baned(m, o) {
+export function troll_baned(m, o) {
     return m.data.mlet === M.S_TROLL && !!o && o.oartifact === ART_TROLLSBANE;
 }
 

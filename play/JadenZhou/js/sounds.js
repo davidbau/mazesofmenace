@@ -1184,8 +1184,11 @@ async function dochat() {
     const u = game.u;
     let mtmp, otmp;
 
-    if (is_silent(game.youmonst.data))
-        throw new Error('dochat(): silent hero form not ported yet');
+    if (is_silent(game.youmonst.data)) {
+        await pline(`As ${an_sn(pmname_sn(game.youmonst.data,
+                                          game.flags.female ? FEMALE_SN : MALE_SN))}, you cannot speak.`);
+        return ECMD_OK;
+    }
     if (Strangled()) {
         await pline("You can't speak.  You're choking!"); /* You_cant() */
         return ECMD_OK;

@@ -19,7 +19,7 @@ import { MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP, MIGR_SSTAIRS
          TRAPDOOR, CXN_PFX_THE, OBJ_AT } from './const.js';
 import { Tobjnam, otense, corpse_xname, an } from './objnam.js';
 import { is_unpaid } from './shk.js';
-import { maybe_unhide_at } from './mon.js';
+import { maybe_unhide_at, m_into_limbo } from './mon.js';
 import { remove_worn_item } from './steal.js';
 import { breaktest, hitfloor } from './dothrow.js';
 import { finesse_ahriman } from './artifact.js';
@@ -468,7 +468,7 @@ export async function u_collide_m(mtmp) {
             await pline("(monster in hero's way)");
         if (!await rloc(mtmp, RLOC_NOMSG) || (mtmp = m_at(u.ux, u.uy)) != null)
             /* no room to move it; send it away, to return later */
-            throw new Error('u_collide_m(): m_into_limbo() not ported yet');
+            await m_into_limbo(mtmp);
     }
 }
 
@@ -965,7 +965,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (g.migrating_objs)
         await obj_delivery(false);
     await losedogs();
-    kill_genocided_monsters(); /* for those wiped out while in limbo */
+    await kill_genocided_monsters(); /* for those wiped out while in limbo */
     /*
      * Expire all timers that have gone off while away.  Must be
      * after migrating monsters and objects are delivered

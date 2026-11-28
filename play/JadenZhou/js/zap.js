@@ -4182,7 +4182,7 @@ export async function melt_ice(x, y, msg) {
     }
     spot_stop_timers_zp(x, y, MELT_ICE_AWAY_ZP); /* no more ice to melt away */
     if (t_at(x, y))
-        trap_ice_effects(x, y, true); /* TRUE because ice_is_melting */
+        await trap_ice_effects(x, y, true); /* TRUE because ice_is_melting */
     obj_ice_effects_zp(x, y, false);
     unearth_objs(x, y);
     if (g.u.uinwater) /* Underwater */

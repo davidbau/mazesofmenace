@@ -11336,13 +11336,13 @@ async function _look_here_skip_objects(ct, head, picked_some = false, skip_dfeat
     await read_engr_at(x, y);
     if (ct === 1 && ((head.quan == null ? 1 : (head.quan | 0)) === 1)) {
         /* Unreachable while pile_limit > 1, but transcribed as C has it. */
-        _result_append_join(g, `There is ${picked_some ? 'another' : 'an'} object here.`);
+        await _result_append_join(g, `There is ${picked_some ? 'another' : 'an'} object here.`);
     } else {
         const word = (ct === 2) ? 'two'
             : (ct < 5) ? 'a few'
                 : (ct < 10) ? 'several'
                     : 'many';
-        _result_append_join(g,
+        await _result_append_join(g,
             `There are ${word}${picked_some ? ' more' : ''} objects here.`);
     }
 }
@@ -11562,7 +11562,7 @@ async function _look_here_line(g, line) {
         _topl_stash_result();
         await pline(line);
     } else
-        _result_append_join(g, line);
+        await _result_append_join(g, line);
 }
 
 async function _dolook() {
@@ -11659,7 +11659,7 @@ async function _dolook() {
     let trap = t_at(x, y);
     if (trap && !trap.tseen) trap = null;
     if (_lhReg || trap)
-        _result_append_join(g, `There is ${_lhReg ? `a ${reg_damg(_lhReg) ? 'poison gas' : 'vapor'} cloud` : ''}${(_lhReg && trap) ? ' and ' : ''}${trap ? an(trapname(trap.ttyp | 0, false)) : ''} here.`);
+        await _result_append_join(g, `There is ${_lhReg ? `a ${reg_damg(_lhReg) ? 'poison gas' : 'vapor'} cloud` : ''}${(_lhReg && trap) ? ' and ' : ''}${trap ? an(trapname(trap.ttyp | 0, false)) : ''} here.`);
 
     /* C invent.c:4178 — otmp = svl.level.objects[u.ux][u.uy]. */
     const head = g.level?.levelObjects?.[x]?.[y] ?? null;
@@ -11696,7 +11696,7 @@ async function _dolook() {
                 _topl_stash_result();
                 await pline(`You ${verb} no objects here.`);
             } else
-                _result_append_join(g, `You ${verb} no objects here.`);
+                await _result_append_join(g, `You ${verb} no objects here.`);
         }
         /* C invent.c:4249 — return (!!Blind ? ECMD_TIME : ECMD_OK). */
         g.context = g.context || {};
@@ -11721,7 +11721,7 @@ async function _dolook() {
                 /* invent.c:4282-4284: the You() line, then feel_cockatrice */
                 await pline(`You ${verb} here ${nm}.`);
             } else
-                _result_append_join(g, `You ${verb} here ${nm}.`);
+                await _result_append_join(g, `You ${verb} here ${nm}.`);
             /* C invent.c:4283: slip_or_trip refers to this item by pronoun. */
             (g.iflags ||= {}).last_msg = PLNMSG_ONE_ITEM_HERE;
             if (head.otyp === 265 /* CORPSE */ && will_feel_cockatrice(head, false))
@@ -12322,7 +12322,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                  * the post-add status. */
                 SET_BOTL();
                 pline_flush_point();
-                _result_append_join(game, _coinLine);
+                await _result_append_join(game, _coinLine);
                 /* C invent.c addinv_core1: gold sets disp.botl, so the prinv
                  * pline's flush_screen runs bot() with the POST-add capacity;
                  * encumber_msg's pline (allmain.c:208) then pages over it.
@@ -12368,7 +12368,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                      * being picked up still announces the discovery. */
                     if (_discovered && (obj.how_lost | 0) !== LOST_THROWN
                         && (_mergeStack.how_lost | 0) !== LOST_THROWN)
-                        _result_append_join(game,
+                        await _result_append_join(game,
                             'You learn more about your items by comparing them.');
                 } else {
                     if (_invlet_constant()) {
@@ -12443,7 +12443,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
             if (obj.oclass !== OCLASS_COIN) {
                 const _decSink = [];
                 addinv_core2(_mergeStack || obj, _decSink);
-                for (const _d of _decSink) _result_append_join(game, _d);
+                for (const _d of _decSink) await _result_append_join(game, _d);
             }
             /* C invent.c:1144 addinv_core0 — carry_obj_effects(obj) follows
              * addinv_core2 (a cursed figurine gets its transform timer: rnd(9000)). */
@@ -12467,7 +12467,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                     if (cdn && obj.invlet) {
                         const line = `${_pickup_prinv_prefix('lifting')}${_pickup_prinv_let(obj)} - ${cdn}.`;
                         _lastPrinvLine = line;
-                        _result_append_join(game, line);
+                        await _result_append_join(game, line);
                     }
                 } else if (_mergeStack) {
                     /* C prinv (invent.c:2874-2889): a pickup that merges into an
@@ -12497,7 +12497,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                         const total_of = _mergeLiftedQuan && _mergeLiftedQuan < _savequan;
                         const line = `${_pickup_prinv_prefix('lifting')}${_pickup_prinv_let(_mergeStack)} - ${cn}${total_of ? (game.flags?.verbose ? ` (${_mergeStack.quan | 0} in total).` : '') : '.'}`;
                         _lastPrinvLine = line;
-                        _result_append_join(game, line);
+                        await _result_append_join(game, line);
                     }
                 } else {
                     /* C invent.c:2924 xprname -> doname: include equipment
@@ -12519,7 +12519,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
                         if (obj.oartifact) {
                             await pline(line);
                             _topl_stash_result();
-                        } else _result_append_join(game, line);
+                        } else await _result_append_join(game, line);
                     }
                 }
             }
@@ -15716,7 +15716,7 @@ async function _do_look_lookat(x, y) {
                 || ((ibm_mode() || rogue_graphics()) && dglyph.cls === GLYPHCLS_CMAP
                     && dglyph.ch === 'z' && cell.typ === ROOM));
         if (isAmbiguousDot) {
-            let firstmatch = null, dbaseEntry = null;
+            let firstmatch = null;
             /* pager.c:756 lookat() switches on the remembered GLYPH: a doorway
              * glyph outlives the door (shk repair_damage turns a dug door back
              * into a wall the hero has not re-seen), so S_ndoor decides too. */
@@ -15728,10 +15728,8 @@ async function _do_look_lookat(x, y) {
                     firstmatch = 'open drawbridge portcullis';
                 } else if ((dm & ~D_TRAPPED) === D_BROKEN) {
                     firstmatch = 'broken door';
-                    dbaseEntry = firstmatch;
                 } else {
                     firstmatch = 'doorway';
-                    dbaseEntry = firstmatch;
                 }
             } else if (cell.typ === ICE
                        /* lookat() switches on the glyph: a remembered S_darkroom over
@@ -15743,7 +15741,6 @@ async function _do_look_lookat(x, y) {
                 firstmatch = waterbody_name(x, y);
                 if (firstmatch === 'ice')
                     firstmatch = ice_descr(x, y); /* pager.c:1601 */
-                dbaseEntry = /ice$/.test(firstmatch) ? firstmatch : null;
             } else if (rg.color === CLR_BLACK
                        || (dglyph.cls === GLYPHCLS_CMAP && dglyph.cmap === S_darkroom)) {
                 firstmatch = 'dark part of a room';
@@ -15778,7 +15775,12 @@ async function _do_look_lookat(x, y) {
                     // C pager.c:1444-1509 scans all classes for the active symbol.
                     ...((dglyph.symbol != null || game.go?.ov_primary_syms?.some(Boolean)) ? pager_cmap_description(dglyph) : {}),
                     firstmatch,
-                    dbaseEntry,
+                    /* C pager.c:1947-1949: `Strcpy(temp_buf, firstmatch);
+                     * checkfile(temp_buf, ...)` -- the lookup runs on the
+                     * lookat() name itself, and an empty resolution IS C's
+                     * "no entry" outcome.  Same list shape as the
+                     * cmap-waterbody arm below. */
+                    dbaseEntries: checkfile_entries(firstmatch),
                 };
             }
         }
@@ -16744,6 +16746,10 @@ function _result_append_join(g, msg) {
      * gt.toplines.  pline's skip arm updates that hidden buffer synchronously;
      * its length controls whether a later "You die" clears WIN_STOP. */
     if (g._topl_win_stop) return pline(msg);
+    if (msgtype_is_stop(msg) && !g._topl_urgent_next) {
+        _topl_stash_result();
+        return pline(msg);
+    }
     /* C pline.c:281: this message channel also clears the classification. */
     (g.iflags ||= {}).last_msg = PLNMSG_UNKNOWN;
     g._prevmsg = String(msg);
@@ -16944,7 +16950,7 @@ export async function _spoteffects_pickup(redrawPending = false) {
                 const _dfline = (_skip_dfeature || _blindSkipDf) ? null
                     : _look_here_dfeature_line(u.ux | 0, u.uy | 0);
                 if (_dfline)
-                    _result_append_join(game, _dfline);
+                    await _result_append_join(game, _dfline);
                 /* C invent.c:4281 — read_engr_at(u.ux, u.uy) sits between the
                  * dfeature line and "You see here" in the one-object arm. */
                 await read_engr_at(u.ux | 0, u.uy | 0, redrawPending);
@@ -16970,7 +16976,7 @@ export async function _spoteffects_pickup(redrawPending = false) {
                     /* C invent.c:4282 -> pline.c:273-274: You("see here ...")
                      * runs flush_screen(1) before emitting msg. */
                     pline_flush_point();
-                    _result_append_join(game, msg);
+                    await _result_append_join(game, msg);
                 }
                 /* C invent.c:4283 precedes feel_cockatrice and the next turn. */
                 (g.iflags ||= {}).last_msg = PLNMSG_ONE_ITEM_HERE;
@@ -16986,7 +16992,7 @@ export async function _spoteffects_pickup(redrawPending = false) {
          * reusing `head`: the autopickup arm reassigns it, and C re-evaluates
          * OBJ_AT() at this point too. */
         if (_notake && (lvlObjs?.[ux2]?.[uy2] ?? null))
-            _result_append_join(game,
+            await _result_append_join(game,
                 'You are physically incapable of picking anything up.');
     }
 }

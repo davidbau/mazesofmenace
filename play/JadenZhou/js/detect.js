@@ -111,6 +111,7 @@ import { u_at as u_at_dt, M_AP_TYPE as M_AP_TYPE_DT, M_AP_OBJECT as M_AP_OBJECT_
 import { PM_TENGU as PM_TENGU_DT } from './monsters.js';
 import { level_objects_at } from './mkobj.js';
 import { findgold } from './steal.js';
+import { detect_wsegs } from './worm.js';
 
 // C ref: lock.c cvt_sdoor_to_door()
 export function cvt_sdoor_to_door(lev) {
@@ -1221,8 +1222,8 @@ function map_monst(mtmp, showtail) {
                        ptr.mcolor ?? NO_COLOR, false, attr, 'mon', false,
                        { mndx: ptr.pmidx });
 
-    if (showtail && mtmp.data === mons_dt[PM_LONG_WORM_DT] && mtmp.wormno)
-        throw new Error('map_monst(): detect_wsegs() not ported yet');
+    if (showtail && mtmp.data === mons_dt[PM_LONG_WORM_DT])
+        detect_wsegs(mtmp, false);
 }
 
 // C ref: detect.c monster_detect()

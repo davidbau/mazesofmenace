@@ -19,7 +19,7 @@ import { objects, CLOTH, COIN_CLASS, LARGE_BOX, CHEST, TOWEL, CORPSE,
          CREAM_PIE, Is_box, u_wield_art } from './objects.js';
 import { mons, S_DRAGON, S_EEL, M1_HIDE, M1_HUMANOID, M1_SLITHY, M1_AMORPHOUS,
          M1_OVIPAROUS, M1_SWIM, PM_TRAPPER, PM_GREMLIN } from './monsters.js';
-import { curse, unbless } from './mkobj.js';
+import { curse_async, unbless } from './mkobj.js';
 import { spec_ability, SPFX_INTEL } from './artifact.js';
 import { ART_MAGICBANE } from './artilist.js';
 import { Tobjnam, Yobjnam2 } from './objnam.js';
@@ -244,7 +244,7 @@ export async function rndcurse() {
             if (otmp.blessed)
                 unbless(otmp);
             else
-                curse(otmp);
+                await curse_async(otmp);
         }
         /* update_inventory(): no perm_invent window */
     }
@@ -256,7 +256,7 @@ export async function rndcurse() {
         if (otmp.blessed)
             unbless(otmp);
         else
-            curse(otmp);
+            await curse_async(otmp);
         if (!Blind()) {
             await pline(`${Yobjnam2(otmp, "glow")} ${
                 hcolor(otmp.cursed ? NH_BLACK : "brown")}.`);

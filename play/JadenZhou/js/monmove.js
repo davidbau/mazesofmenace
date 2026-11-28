@@ -1563,6 +1563,16 @@ export function m_avoid_soko_push_loc(mtmp, nx, ny) {
     return false;
 }
 
+// C ref: monmove.c itsstuck()
+/* the monster is stuck to the hero (poly'd into a sticky monster) */
+export async function itsstuck(mtmp) {
+    if (sticks(game.youmonst.data) && mtmp === game.u.ustuck && !game.u.uswallow) {
+        await pline_mon(mtmp, `${Monnam(mtmp)} cannot escape from you!`);
+        return true;
+    }
+    return false;
+}
+
 // ── C ref: monmove.c should_displace() ──
 export function should_displace(mtmp, mfp, ggx, ggy) {
     let shortest_with_displacing = -1;
@@ -2392,8 +2402,8 @@ export async function m_move(mtmp, after) {
     }
 
     if (mmoved !== MMOVE_NOTHING) {
-        if (mmoved === MMOVE_MOVED && !u_at(nix, niy) && u.ustuck === mtmp)
-            throw new Error('m_move(): itsstuck() not ported yet');
+        if (mmoved === MMOVE_MOVED && !u_at(nix, niy) && await itsstuck(mtmp))
+            return MMOVE_DONE;
 
         if (mmoved === MMOVE_MOVED && await m_digweapon_check(mtmp, nix, niy))
             return MMOVE_DONE;

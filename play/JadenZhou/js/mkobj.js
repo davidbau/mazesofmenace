@@ -55,7 +55,8 @@ import { maybe_reset_pick } from './lock.js';
 import { confers_luck } from './timeout.js';
 import { set_moreluck } from './attrib.js';
 import { reset_remarm } from './do_wear.js';
-import { book_cursed_sync } from './spell.js';
+import { book_cursed_sync, book_cursed } from './spell.js';
+import { drop_uswapwep } from './wield.js';
 import { eaten_stat, tin_variety, tintxt_fodder, vegetarian,
          nonrotting_corpse } from './eat.js';
 import { is_ice } from './dig.js';
@@ -1184,7 +1185,7 @@ export function curse(otmp) {
     /* rules at top of wield.c state that twoweapon cannot be done
        with cursed alternate weapon */
     if (otmp === game.uswapwep && game.u.twoweap)
-        throw new Error('curse(): drop_uswapwep() not ported yet');
+        throw new Error('curse(): drop_uswapwep() from a synchronous caller (use curse_async()) not ported yet');
     /* some cursed items need immediate updating */
     if (otmp.where === 'OBJ_INVENT' /* carried(otmp) */ && confers_luck(otmp)) {
         set_moreluck();
@@ -1235,6 +1236,45 @@ export function unbless(otmp) {
         otmp.owt = weight(otmp);
     if (otmp.lamplit)
         maybe_adjust_light_sync(otmp, old_light);
+}
+
+// C ref: mkobj.c curse() -- for callers that can curse the hero's own
+// gear: drop_uswapwep(), book_cursed() and maybe_adjust_light() print
+export async function curse_async(otmp) {
+    let already_cursed;
+    let old_light = 0;
+
+    if (otmp.oclass === COIN_CLASS)
+        return;
+    if (otmp.lamplit)
+        old_light = arti_light_radius(otmp);
+    already_cursed = otmp.cursed;
+    otmp.blessed = 0;
+    otmp.cursed = 1;
+    /* welded two-handed weapon interferes with some armor removal */
+    if (otmp === game.uwep && bimanual(game.uwep))
+        reset_remarm();
+    /* rules at top of wield.c state that twoweapon cannot be done
+       with cursed alternate weapon */
+    if (otmp === game.uswapwep && game.u.twoweap)
+        await drop_uswapwep();
+    /* some cursed items need immediate updating */
+    if (otmp.where === 'OBJ_INVENT' /* carried(otmp) */ && confers_luck(otmp)) {
+        set_moreluck();
+    } else if (otmp.otyp === O.BAG_OF_HOLDING) {
+        otmp.owt = weight(otmp);
+    } else if (otmp.otyp === O.FIGURINE) {
+        if (otmp.corpsenm !== NON_PM && !dead_species(otmp.corpsenm, true)
+            && (otmp.where === 'OBJ_INVENT' || otmp.where === 'OBJ_MINVENT'))
+            attach_fig_transform_timeout(otmp);
+    } else if (otmp.oclass === SPBOOK_CLASS) {
+        /* if book hero is reading becomes cursed, interrupt */
+        if (!already_cursed)
+            await book_cursed(otmp);
+    }
+    if (otmp.lamplit)
+        await maybe_adjust_light(otmp, old_light);
+    return;
 }
 
 // C ref: mkobj.c maybe_adjust_light()
