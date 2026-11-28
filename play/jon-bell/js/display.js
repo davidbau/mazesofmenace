@@ -1738,7 +1738,11 @@ function _epyx_terrain(loc, g) {
                 return { ch: 'N', color: CLR_BROWN, dec: false };
             return { ch: g.ch, color: CLR_BROWN, dec: false };
         case ROOM: return { ch: 'z', color: CLR_GREEN, dec: false };
-        case CORR: return { ch: g.color === CLR_WHITE ? '2' : '1', color: NO_COLOR, dec: false };
+        /* The lit/dark split is the cmap identity (back_to_glyph's S_litcorr
+         * vs S_corr), not the colour: display.c:2938-2941 whitens S_litcorr
+         * only while it shares S_corr's symbol, so RogueEpyx/RogueIBM
+         * (S_corr \xb1 vs S_litcorr \xb2) carry no CLR_WHITE at all. */
+        case CORR: return { ch: g.cmap === 23 ? '2' : '1', color: NO_COLOR, dec: false };
         case STAIRS: return g.color === CLR_YELLOW ? g
             : { ch: 'p', color: CLR_GREEN, dec: false };
         default:
@@ -1779,7 +1783,8 @@ export function terrain_glyph(loc, x, y, assumeVisible = false) {
 function _terrain_cmap_name(loc, g) {
     switch (loc.typ) {
         case ROOM: return 'S_room';
-        case CORR: return g.color === CLR_WHITE || g.ch === '1' ? 'S_litcorr' : 'S_corr';
+        case CORR: return g.cmap === 23 || g.color === CLR_WHITE || g.ch === '1'
+            ? 'S_litcorr' : 'S_corr';
         case FOUNTAIN: return 'S_fountain';
         case ALTAR: return 'S_altar';
         /* C display.c:2375-2383, 2390-2391 back_to_glyph cmap indices */
@@ -1848,6 +1853,20 @@ function _terrain_glyph_base(loc, x, y, assumeVisible) {
             const litCorr = (assumeVisible || cansee(x, y))
                 && (loc.waslit || game.flags?.lit_corridor);
             const corrIdx = litCorr ? 23 /* S_litcorr */ : 22 /* S_corr */;
+            /* C display.c:2938-2941 (glyphmap GLYPH_CMAP_A arm): the lit
+             * corridor is recoloured CLR_WHITE only while it shares the dark
+             * corridor's symbol (gs.showsyms[S_litcorr] == gs.showsyms[S_corr]);
+             * an rc or symset that gives either corridor form its own symbol
+             * keeps defsym's CLR_GRAY.  OPTIONS=S_corr:<c> and SYMBOLS= both
+             * land in showsyms through ov_primary_syms (symbols.c:236-239), so
+             * read the live table — a hardcoded CLR_WHITE paints white where C
+             * paints gray (df-x278fa13376: OPTIONS=S_corr:. leaves S_litcorr
+             * at '#', so corridors newly seen past the opened door at step 77
+             * paint gray/white-less, not bright white).  The override has no
+             * use_color guard in C, so neither does this. */
+            const corrColor = litCorr
+                && primary_showsym(23) === primary_showsym(22)
+                    ? CLR_WHITE : NO_COLOR;
             /* C symbols.c loadsyms: SYMBOLS=S_corr/S_litcorr:<char> replaces the
              * per-cell symset glyph with a plain tty char.  The two symbols are
              * independent in C (no corr↔litcorr showsyms alias; reglyph_darkroom
@@ -1855,14 +1874,14 @@ function _terrain_glyph_base(loc, x, y, assumeVisible) {
              * one this cell resolves to. */
             const corrOverride = _sym_override(litCorr ? 'S_litcorr' : 'S_corr');
             if (corrOverride)
-                return { ch: corrOverride, color: litCorr ? CLR_WHITE : NO_COLOR,
+                return { ch: corrOverride, color: corrColor,
                          dec: false, cmap: corrIdx };
             if (ibmMode) /* C dat/symbols:242 S_corr \xb0 → '0', S_litcorr \xb1 → '1' */
                 return litCorr
-                    ? { ch: '1', color: NO_COLOR, dec: false, cmap: corrIdx }
+                    ? { ch: '1', color: corrColor, dec: false, cmap: corrIdx }
                     : { ch: '0', color: NO_COLOR, dec: false, cmap: corrIdx };
             return litCorr
-                ? { ch: '#', color: CLR_WHITE, dec: false, cmap: corrIdx } // S_litcorr
+                ? { ch: '#', color: corrColor, dec: false, cmap: corrIdx } // S_litcorr
                 : { ch: '#', color: NO_COLOR, dec: false, cmap: corrIdx };  // S_corr (dark)
         }
         case DOOR:

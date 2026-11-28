@@ -3,7 +3,8 @@
 //        xprname()
 
 import { fingers_or_gloves } from './do_wear.js';
-import { addtobill, stolen_value, get_obj_location } from './shk.js';
+import { addtobill, stolen_value, get_obj_location,
+         picked_container } from './shk.js';
 import { in_rooms, impossible } from './hack.js';
 import { hideunder_async } from './makemon.js';
 import { get_count, GC_SAVEHIST } from './cmd.js';
@@ -14,7 +15,7 @@ import { obj_resists } from './dogmove.js';
 import { maybe_unhide_at } from './mon.js';
 import { doname, doname_with_price, makeplural } from './objnam.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
-import { ing_suffix, visctrl } from './hacklib.js';
+import { ing_suffix, visctrl, letter } from './hacklib.js';
 import { def_oc_syms } from './drawing.js';
 import { body_part, hidden_gold, currency, empty_handed } from './insight.js';
 import { money_cnt } from './u_init.js';
@@ -40,7 +41,7 @@ import {
     GETOBJ_PROMPT, Never_mind, FINGERTIP, HAND, W_ARMOR, W_ACCESSORY,
     W_SADDLE, W_WEAPONS, W_TOOL,
 } from './const.js';
-import { objects, Is_container, is_missile, is_ammo } from './objects.js';
+import { objects, Is_container, is_ammo } from './objects.js';
 import * as M from './monsters.js';
 import { mons, PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
 import { STONE_RES, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
@@ -48,7 +49,7 @@ import { STONE_RES, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
 import { weight, erosion_matters, Is_candle, obj_extract_self, splitobj,
          dead_species, curse, dealloc_obj } from './mkobj.js';
 import { itemactions } from './iactions.js';
-import { NON_PM, P_DAGGER, P_SHORT_SWORD, P_SABER, P_SPEAR, Is_knox_level,
+import { NON_PM, Is_knox_level,
          Is_earthlevel, Is_airlevel, Is_firelevel, Is_waterlevel } from './const.js';
 import { dunlev, depth } from './dungeon.js';
 import { is_quest_artifact } from './questpgr.js';
@@ -111,7 +112,7 @@ import { bypass_obj as bypass_obj_gg, bypass_objlist as bypass_objlist_gg,
 import { def_char_to_objclass as def_char_to_objclass_gg } from './drawing.js';
 import { tty_getlin as tty_getlin_gg,
          tty_yn_function as tty_yn_function_gg } from './wintty.js';
-import { unsplitobj as unsplitobj_gg } from './mkobj.js';
+import { unsplitobj as unsplitobj_gg, level_objects_at } from './mkobj.js';
 import { highc as highc_gg } from './hacklib.js';
 import { ARMOR_CLASS as ARMOR_CLASS_GG, WEAPON_CLASS as WEAPON_CLASS_GG,
          RING_CLASS as RING_CLASS_GG, AMULET_CLASS as AMULET_CLASS_GG,
@@ -121,8 +122,8 @@ import { SORTLOOT_INVLET as SORTLOOT_INVLET_GG, ALL_FINISHED as ALL_FINISHED_GG,
          BUC_BLESSED as BUC_BLESSED_GG, BUC_UNCURSED as BUC_UNCURSED_GG,
          BUC_CURSED as BUC_CURSED_GG, BUC_UNKNOWN as BUC_UNKNOWN_GG } from './const.js';
 import { SORTLOOT_INUSE } from './const.js';
-import { little_to_big, touch_petrifies } from './mondata.js';
-import { MV_KNOWS_EGG, SIGNAL_NOMENU, SIGNAL_ESCAPE, USE_INVLET,
+import { touch_petrifies } from './mondata.js';
+import { SIGNAL_NOMENU, SIGNAL_ESCAPE, USE_INVLET,
          INVORDER_SORT, PICK_ANY, thats_enough_tries,
          MENU_TRADITIONAL as MENU_TRADITIONAL_IV, MENU_FULL as MENU_FULL_IV,
          HALLUC as HALLUC_IV, HALLUC_RES as HALLUC_RES_IV } from './const.js';
@@ -144,6 +145,9 @@ import { MENU_PARTIAL as MENU_PARTIAL_IV, UNPAID_TYPES as UNPAID_TYPES_IV,
          INCLUDE_VENOM as INCLUDE_VENOM_IV } from './const.js';
 import { shopper_financial_report as shopper_financial_report_iv } from './shk.js';
 import { unpunish } from './read.js';
+import { throwing_weapon } from './dothrow.js';
+import { wait_synch } from './end.js';
+import { learn_egg_type } from './polyself.js';
 
 const invlet_basic = 52;
 const GOLD_SYM = '$';
@@ -1012,21 +1016,6 @@ export function obfree(obj, merge) {
     dealloc_obj(obj);
 }
 
-// C ref: shk.c picked_container()
-export function picked_container(obj) {
-    /* the "top" container is treated in the calling fn */
-    for (const otmp of obj.cobj || []) {
-        if (otmp.oclass === O.COIN_CLASS)
-            continue;
-
-        if (otmp.no_charge)
-            otmp.no_charge = 0;
-
-        if (otmp.cobj && otmp.cobj.length) /* Has_contents() */
-            picked_container(otmp);
-    }
-}
-
 // C ref: invent.c carry_obj_effects()
 /*
  * Some objects are affected by being carried.
@@ -1102,20 +1091,6 @@ export function merge_choice(objlist, obj) {
     } while (objlist);
     obj.no_charge = save_nocharge;
     return objlist;
-}
-
-// C ref: dothrow.c throwing_weapon()
-function throwing_weapon(obj) {
-    const skill = objects[obj.otyp].oc_skill;
-    const is_weapon = obj.oclass === O.WEAPON_CLASS;
-    return (is_missile(obj)
-            || (is_weapon && skill === P_SPEAR) /* is_spear() */
-            /* daggers and knife (excludes scalpel) */
-            || (is_weapon && skill >= P_DAGGER && skill <= P_SABER /* is_blade() */
-                && !(skill >= P_SHORT_SWORD && skill <= P_SABER) /* is_sword() */
-                && (objects[obj.otyp].oc_dir & O.PIERCE))
-            /* special cases [might want to add AXE] */
-            || obj.otyp === O.WAR_HAMMER || obj.otyp === O.AKLYS);
 }
 
 // C ref: pickup.c reset_justpicked() -- reset last-picked-up flags
@@ -1783,8 +1758,7 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
                 trap ? an(trapname(trap.ttyp, false)) : ""} here.`);
     }
 
-    const here = (game.level.objects || []).filter(
-        o => o.ox === u.ux && o.oy === u.uy && o.where === 'OBJ_FLOOR');
+    const here = level_objects_at(u.ux, u.uy);
     dfeature = dfeature_at(u.ux, u.uy);
     if (dfeature && dfeature === "pool of water" && u.uinwater)
         dfeature = null;
@@ -2632,8 +2606,7 @@ export function merged(r) {
 export async function delallobj(x, y) {
     /* for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp2): the pile
        at <x,y> from the floor chain */
-    const pile = (game.level.objects || []).filter(
-        o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR');
+    const pile = level_objects_at(x, y);
     for (const otmp of pile) {
         if (otmp === game.uball)
             await unpunish();
@@ -2725,14 +2698,8 @@ export function fully_identify_obj(otmp) {
     observe_object_iv(otmp, Hallucination());
     otmp.known = otmp.bknown = otmp.rknown = 1;
     set_cknown_lknown(otmp); /* set otmp->{cknown,lknown} if applicable */
-    if (otmp.otyp === O.EGG && otmp.corpsenm !== NON_PM) {
-        /* C ref: timeout.c learn_egg_type() */
-        /* baby monsters hatch from grown-up eggs */
-        const mnum = little_to_big(otmp.corpsenm);
-        game.mvitals[mnum].mvflags |= MV_KNOWS_EGG;
-        /* we might have just learned about other eggs being carried */
-        /* update_inventory(): no perm_invent */
-    }
+    if (otmp.otyp === O.EGG && otmp.corpsenm !== NON_PM)
+        learn_egg_type(otmp.corpsenm);
 }
 
 // C ref: invent.c identify()
@@ -2765,7 +2732,7 @@ async function menu_identify(id_limit) {
             for (i = 0; i < n; i++, id_limit--)
                 await identify(pick_list[i].obj);
             if (id_limit)
-                wait_synch_iv(); /* Before we loop to pop open another menu */
+                wait_synch(); /* Before we loop to pop open another menu */
             first = 0;
         } else if (n === -2) { /* player used ESC to quit menu */
             break;
@@ -3194,24 +3161,12 @@ export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
     return cnt;
 }
 
-/* C ref: wintty.c tty_wait_synch() -- the map window is up and no raw
-   output is pending, so this only flushes the (unbuffered) screen */
-function wait_synch_iv() {
-    if (game.ttyDisplay?.rawprint)
-        throw new Error('wait_synch(): getret() not ported yet');
-}
-
 
 /* C ref: rm.h SURFACE_AT() */
 function SURFACE_AT_iv(x, y) {
     const lev = game.level.at(x, y);
     return (lev.typ === DRAWBRIDGE_UP_IV) ? db_under_typ_iv(lev.drawbridgemask || 0)
                                           : lev.typ;
-}
-
-// C ref: hacklib.c letter()
-function letter_iv(c) {
-    return ('@' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
 }
 
 // C ref: mkobj.c extract_nobj() -- for the hero's inventory chain
@@ -3475,7 +3430,7 @@ async function doorganize_core(obj) {
         /* letter() classifies '@' as one; compactify() can put '-' in lets;
            the only thing of interest that strchr() might find is '$' or '#'
            since letter() catches everything else that we put into lets[] */
-        if ((letter_iv(let_) && let_ !== '@') || (lets.includes(let_) && let_ !== '-'))
+        if ((letter(let_) && let_ !== '@') || (lets.includes(let_) && let_ !== '-'))
             break; /* got one */
         if (trycnt === 5) {
             noadjust = true;

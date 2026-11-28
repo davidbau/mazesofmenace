@@ -90,7 +90,7 @@ function run_msgs_sync(gen) {
 export function MON_WEP(mon) { return mon.mw || null; }
 
 /* C ref: obj.h is_elven_armor() */
-function is_elven_armor(otmp) {
+export function is_elven_armor(otmp) {
     return otmp.otyp === O.ELVEN_LEATHER_HELM
         || otmp.otyp === O.ELVEN_MITHRIL_COAT || otmp.otyp === O.ELVEN_CLOAK
         || otmp.otyp === O.ELVEN_SHIELD || otmp.otyp === O.ELVEN_BOOTS;
@@ -100,7 +100,7 @@ function is_elven_armor(otmp) {
 /* C ref: mondata.h cantweararm() */
 export function cantweararm(ptr) { return breakarm(ptr) || sliparm(ptr); }
 /* C ref: obj.h WrappingAllowed() */
-function WrappingAllowed(mptr) {
+export function WrappingAllowed(mptr) {
     return humanoid(mptr) && mptr.msize >= M.MZ_SMALL && mptr.msize <= M.MZ_HUGE
         && !noncorporeal(mptr) && mptr.mlet !== M.S_CENTAUR
         && mptr !== mons[M.PM_WINGED_GARGOYLE] && mptr !== mons[M.PM_MARILITH];
@@ -879,14 +879,14 @@ function* m_lose_armor_g(mon, obj, polyspot) {
 }
 
 /* C ref: obj.h Is_dragon_scales() ... Dragon_mail_to_pm() */
-function Is_dragon_mail(o) {
+export function Is_dragon_mail(o) {
     return o.otyp >= O.GRAY_DRAGON_SCALE_MAIL
            && o.otyp <= O.YELLOW_DRAGON_SCALE_MAIL;
 }
-function Dragon_scales_to_pm(o) {
+export function Dragon_scales_to_pm(o) {
     return mons[M.PM_GRAY_DRAGON + o.otyp - O.GRAY_DRAGON_SCALES];
 }
-function Dragon_mail_to_pm(o) {
+export function Dragon_mail_to_pm(o) {
     return mons[M.PM_GRAY_DRAGON + o.otyp - O.GRAY_DRAGON_SCALE_MAIL];
 }
 // C ref: worn.c mon_break_armor()

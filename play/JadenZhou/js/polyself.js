@@ -33,12 +33,12 @@ import { set_mon_data, is_vampire, resists_drli, dmgtype, dmgtype_fromattack,
          is_bat, perceives, telepathic, infravision, pm_invisible,
          can_teleport, control_teleport, is_floater, is_flyer, is_swimmer,
          passes_walls, regenerates, haseyes, nohands, verysmall, bigmonst,
-         humanoid, slithy, amorphous, unsolid, noncorporeal, hides_under,
+         humanoid, slithy, amorphous, unsolid, hides_under,
          type_is_pname, likes_gems, is_whirly, has_head, is_hider, polyok,
          strongmonst, is_giant, is_male, is_female, is_neuter, cantwield,
          could_twoweap, flaming, webmaker, likes_lava, is_unicorn,
          is_mind_flayer, is_placeholder, can_breathe, emits_light, attacktype,
-         sliparm, breakarm, num_horns } from './mondata.js';
+         sliparm, breakarm, num_horns, Is_dragon_armor } from './mondata.js';
 import * as M from './monsters.js';
 import * as O from './objects.js';
 import {
@@ -102,7 +102,7 @@ import { dropx, canletgo } from './do.js';
 import { donning, cancel_don, Armor_gone, Cloak_off, Helmet_off,
          Gloves_off, Shield_off, Boots_off, Blindf_off } from './do_wear.js';
 import { useup } from './invent.js';
-import { setworn, racial_exception } from './worn.js';
+import { setworn, racial_exception, WrappingAllowed } from './worn.js';
 import { uwepgone, uswapwepgone, untwoweapon } from './wield.js';
 import { weapon_descr } from './insight.js';
 import { sticks } from './engrave.js';
@@ -312,19 +312,6 @@ export function lays_eggs(ptr) { return (ptr.mflags1 & M.M1_OVIPAROUS) !== 0; }
 /* creature will slide out of armor */
 /* creature will break out of armor */
 export function has_horns(ptr) { return num_horns(ptr) > 0; }
-/* C ref: obj.h WrappingAllowed(), Is_dragon_armor() */
-function WrappingAllowed(mptr) {
-    return humanoid(mptr) && mptr.msize >= M.MZ_SMALL
-        && mptr.msize <= M.MZ_HUGE
-        && !noncorporeal(mptr) && mptr.mlet !== M.S_CENTAUR
-        && mptr !== mons[M.PM_WINGED_GARGOYLE] && mptr !== mons[M.PM_MARILITH];
-}
-function Is_dragon_armor(obj) {
-    return (obj.otyp >= O.GRAY_DRAGON_SCALES
-            && obj.otyp <= O.YELLOW_DRAGON_SCALES)
-        || (obj.otyp >= O.GRAY_DRAGON_SCALE_MAIL
-            && obj.otyp <= O.YELLOW_DRAGON_SCALE_MAIL);
-}
 /* C ref: youprop.h */
 function uprop_on(p) {
     const pr = game.u.uprops[p];

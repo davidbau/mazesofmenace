@@ -82,7 +82,7 @@ import { doextversion } from './mdlib.js';
 import { doopen, doforce, doclose } from './lock.js';
 import { dosave } from './save.js';
 import { done2 } from './end.js';
-import { stairway_at, glyph_at, glyph_is_invisible, canspotmon, vobj_at,
+import { stairway_at, glyph_at, glyph_is_invisible, canspotmon,
          glyph_kind } from './display.js';
 import { can_reach_floor } from './engrave.js';
 import { x_monnam, mon_nam } from './do_name.js';
@@ -112,6 +112,7 @@ import { is_were, is_vampire, is_vampshifter, hides_under, is_hider, webmaker,
          can_breathe, is_mind_flayer, is_unicorn,
          attacktype } from './mondata.js';
 import { show_menu_controls as show_menu_controls_cm } from './pager.js';
+import { level_objects_at } from './mkobj.js';
 export { domove };
 
 // C ref: cmd.c extcmds_match() -- the indices of the extcmdlist[]
@@ -394,11 +395,7 @@ function mcmd_addmenu(win, act, txt) {
 /* the floor pile at <x,y> (svl.level.objects[x][y] via ->nexthere), top
    first */
 export function floor_pile_at(x, y) {
-    const top = vobj_at(x, y);
-    if (!top)
-        return [];
-    return [top, ...(game.level.objects || []).filter(
-        o => o !== top && o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR')];
+    return level_objects_at(x, y);
 }
 
 // C ref: cmd.c there_cmd_menu_self() -- command menu entries when

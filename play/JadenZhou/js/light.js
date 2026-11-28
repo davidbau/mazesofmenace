@@ -19,7 +19,7 @@ import { LS_OBJECT, LS_MONSTER, RANGE_LEVEL, COUNTING, WRITING, FREEING,
          FM_MYDOGS } from './const.js';
 import { objects, CANDELABRUM_OF_INVOCATION, TALLOW_CANDLE, WAX_CANDLE,
          POT_OIL, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP } from './objects.js';
-import { obj_is_local, mon_is_local, end_burn } from './timeout.js';
+import { obj_is_local, end_burn } from './timeout.js';
 import { get_mon_location } from './zap.js';
 import { get_obj_location } from './shk.js';
 import { clear_path, circle_data, circle_start, COULD_SEE } from './vision.js';
@@ -28,7 +28,7 @@ import { artifact_light } from './artifact.js';
 import { vision_recalc } from './vision.js';
 import { flush_screen, canseemon, canspotmon, map_invisible } from './display.js';
 import { dist2 } from './hacklib.js';
-import { place_object, obj_extract_self } from './mkobj.js';
+import { place_object, obj_extract_self, Is_candle } from './mkobj.js';
 import { impossible } from './hack.js';
 import { otense } from './objnam.js';
 import { simpleonames } from './iactions.js';
@@ -229,6 +229,13 @@ function discard_flashes() {
         if (ls.type === LS_OBJECT && !ls.id.a_obj)
             delete_ls(ls);
     }
+}
+
+// C ref: light.c mon_is_local() -- light.c's own macro, not timeout.c's
+/* (mon->mx == 0) implies migrating; the hero (gy.youmonst.mx is always 0)
+   is never local, so a polymorphed hero's light follows the hero */
+function mon_is_local(mon) {
+    return (mon.mx || 0) > 0;
 }
 
 // C ref: light.c find_mid()
@@ -552,11 +559,6 @@ export function obj_split_light_source(src, dest) {
             game.light_base = new_ls;
             dest.lamplit = 1; /* now an active light source */
         }
-}
-
-/* C ref: obj.h Is_candle() */
-function Is_candle(otmp) {
-    return otmp.otyp === TALLOW_CANDLE || otmp.otyp === WAX_CANDLE;
 }
 
 // C ref: light.c obj_merge_light_sources()

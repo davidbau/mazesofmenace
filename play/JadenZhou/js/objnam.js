@@ -15,7 +15,7 @@
 // ported yet (wizard-mode terrain wishes, artifacts by name, fruit names,
 // tins of a monster, lit light sources, novels, ...) raise not_ported().
 
-import { shk_your } from './shk.js';
+import { shk_your, get_obj_location } from './shk.js';
 import { letter, strsubst } from './hacklib.js';
 import { wizard } from './dungeon.js';
 import { game } from './gstate.js';
@@ -43,7 +43,7 @@ import { name_to_mon, name_to_monplus, is_male, is_female, is_neuter, is_were,
          is_human, is_elf, is_dwarf, is_gnome, is_orc,
          verysmall } from './mondata.js';
 import { ismnum } from './const.js';
-import { dead_species, set_corpsenm, can_be_hatched } from './mkobj.js';
+import { dead_species, set_corpsenm, can_be_hatched, level_objects_at } from './mkobj.js';
 import { zombie_form } from './mon.js';
 import { def_char_to_objclass } from './drawing.js';
 import { genders } from './role.js';
@@ -76,8 +76,7 @@ import {
     TREE_LOOTED, TREE_SWARM, IRONBARS, CLOUD, DOOR, SDOOR, IS_WALL, DBWALL,
     Is_rogue_level, D_LOCKED, D_NODOOR, D_ISOPEN, D_BROKEN, D_CLOSED, D_TRAPPED, WM_MASK,
     HWALL, VWALL, isok, COLNO, ROWNO, CORR, SCORR, ROOM, IS_FURNITURE, ICE, TT_LAVA,
-    IS_FOUNTAIN, IS_SINK, MELT_ICE_AWAY, IS_DOOR, W_NONDIGGABLE, W_NONPASSWALL, LADDER,
-    STAIRS,
+    IS_FOUNTAIN, IS_SINK, MELT_ICE_AWAY, IS_DOOR, W_NONDIGGABLE, W_NONPASSWALL,
 } from './const.js';
 import { trapname, maketrap, t_at, deltrap, water_damage_chain, fire_damage_chain,
          set_uinwater, reset_utrap } from './trap.js';
@@ -99,32 +98,14 @@ import { find_mid as find_mid_xn } from './light.js';
 import { FM_FMON as FM_FMON_XN } from './const.js';
 import { noit_mon_nam as noit_mon_nam_xn, mon_pmname as mon_pmname_xn } from './do_name.js';
 import { impossible as impossible_xn } from './hack.js';
+import { counter_were } from './were.js';
+import { CAN_OVERWRITE_TERRAIN } from './mkmaze.js';
 
 // C ref: decl.c vowels[]
 const vowels = "aeiouAEIOU";
 
 function not_ported(what) {
     throw new Error(`readobjnam: ${what} is not ported yet`);
-}
-
-// C ref: were.c counter_were()
-function counter_were(pm) {
-    switch (pm) {
-    case M.PM_WEREWOLF:
-        return M.PM_HUMAN_WEREWOLF;
-    case M.PM_HUMAN_WEREWOLF:
-        return M.PM_WEREWOLF;
-    case M.PM_WEREJACKAL:
-        return M.PM_HUMAN_WEREJACKAL;
-    case M.PM_HUMAN_WEREJACKAL:
-        return M.PM_WEREJACKAL;
-    case M.PM_WERERAT:
-        return M.PM_HUMAN_WERERAT;
-    case M.PM_HUMAN_WERERAT:
-        return M.PM_WERERAT;
-    default:
-        return NON_PM;
-    }
 }
 
 // C ref: mon.c genus()
@@ -655,6 +636,19 @@ export function obj_typename(otyp) {
     if (dn)
         buf += ` (${dn})`;
     return buf;
+}
+
+/* C ref: objnam.c simple_typename() -- obj_typename() without the
+   user-assigned name or the appended description */
+export function simple_typename(otyp) {
+    const save_uname = objects[otyp].oc_uname;
+    objects[otyp].oc_uname = null; /* suppress any name given by user */
+    let bufp = obj_typename(otyp);
+    objects[otyp].oc_uname = save_uname;
+    const pp = bufp.indexOf(" (");
+    if (pp >= 0)
+        bufp = bufp.slice(0, pp); /* strip the appended description */
+    return bufp;
 }
 
 // C ref: objnam.c otense()
@@ -1343,16 +1337,9 @@ export function shiny_obj(oclass) {
     return rnd_otyp_by_namedesc("shiny", oclass, 0);
 }
 
-// C ref: rm.h CAN_OVERWRITE_TERRAIN()
-function CAN_OVERWRITE_TERRAIN(ttyp) {
-    return !!game.iflags?.debug_overwrite_stairs
-        || !(ttyp === LADDER || ttyp === STAIRS);
-}
-
 // the floor objects at <x,y> in svl.level.objects[x][y] order (top first)
 function level_objects_at_wt(x, y) {
-    return (game.level.objects || []).filter(o => o.ox === x && o.oy === y
-                                             && o.where === 'OBJ_FLOOR');
+    return level_objects_at(x, y);
 }
 
 // C ref: objnam.c set_wallprop_from_str()
@@ -3313,23 +3300,6 @@ export function shirt_simple_name(shirt) {
    object the hero only sees from afar */
 let distantname = 0;
 
-// C ref: mkobj.c get_obj_location() -- the locations distant_name() needs
-function get_obj_location(obj) {
-    switch (obj.where) {
-    case 'OBJ_INVENT':
-        return [game.u.ux, game.u.uy];
-    case 'OBJ_FLOOR':
-        return [obj.ox, obj.oy];
-    case 'OBJ_MINVENT':
-        if (obj.ocarry.mx)
-            return [obj.ocarry.mx, obj.ocarry.my];
-        break;
-    default:
-        break;
-    }
-    return null;
-}
-
 // C ref: objnam.c distant_name()
 /* format the object's name, treating it as seen up close only when the
    hero can see its location from nearby */
@@ -4112,8 +4082,8 @@ function doname_base(obj, doname_flags) {
         if (obj.otyp === O.CANDELABRUM_OF_INVOCATION) {
             xn_not_ported('candelabrum suffix');
         } else if (obj.otyp === O.OIL_LAMP || obj.otyp === O.MAGIC_LAMP
-                   || obj.otyp === O.BRASS_LANTERN || Is_candle_x(obj)) {
-            if (Is_candle_x(obj)) {
+                   || obj.otyp === O.BRASS_LANTERN || Is_candle(obj)) {
+            if (Is_candle(obj)) {
                 let timer;
                 const full_burn_time = 20 * objects[obj.otyp].oc_cost;
                 let turns_left = obj.age;
@@ -4288,11 +4258,6 @@ function doname_base(obj, doname_flags) {
 }
 
 function omndx_ok(n) { return n != null && n >= 0; }
-// C ref: role.h Role_if()
-// C ref: obj.h Is_candle()
-function Is_candle_x(otmp) {
-    return otmp.otyp === O.TALLOW_CANDLE || otmp.otyp === O.WAX_CANDLE;
-}
 // C ref: objclass.h GemStone()
 function GemStone_x(typ) {
     return typ === O.FLINT

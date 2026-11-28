@@ -12,7 +12,7 @@ import { just_an } from './objnam.js';
 import { mintrap, Trap_Effect_Finished, Trap_Caught_Mon, Trap_Killed_Mon,
          Trap_Moved_Mon } from './trap.js';
 import { NO_TRAP_FLAGS, LL_CONDUCT, ParanoidTrap, ParanoidSwim,
-         ParanoidConfirm } from './const.js';
+         ParanoidConfirm, is_pit } from './const.js';
 import { abuse_dog } from './dog.js';
 import { adjalign } from './attrib.js';
 import { livelog_printf, You_feel, verbalize, You_hear } from './display.js';
@@ -60,8 +60,8 @@ import {
     BARRACKS, DELPHI, THRONE, STEALTH, WT_ELF, WATER, POOL, LAVAPOOL, FIRE_RES,
 } from './const.js';
 import { waterbody_name } from './pager.js';
-import { has_ceiling } from './insight.js';
-import { ing_suffix, visctrl, upstart, NODIAG } from './hacklib.js';
+import { has_ceiling, record_achievement } from './insight.js';
+import { ing_suffix, visctrl, upstart, NODIAG, s_suffix } from './hacklib.js';
 import { cmd_from_func } from './cmd.js';
 import { S_NYMPH, M2_STRONG, M2_ROCKTHROW, MZ_HUMAN, AT_BOOM, M1_HIDE,
          PM_GRID_BUG, mons, M1_TUNNEL, M1_NEEDPICK, M1_AMORPHOUS, MZ_SMALL,
@@ -87,7 +87,8 @@ import { carrying } from './invent.js';
 import { WAN_DIGGING, is_pick } from './objects.js';
 import { u_at, Is_rogue_level, Upolyd } from './const.js';
 import { fall_asleep } from './timeout.js';
-import { t_at, VIBRATING_SQUARE, is_pit, WEB, climb_pit, reset_utrap, sokoban_guilt } from './trap.js';
+import { t_at, VIBRATING_SQUARE, WEB, climb_pit, reset_utrap,
+         sokoban_guilt } from './trap.js';
 import { TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, TT_NONE } from './const.js';
 import { ART_STING } from './artilist.js';
 import { buried_ball, buried_ball_to_punishment } from './dig.js';
@@ -103,7 +104,7 @@ import { back_to_cmap, defsyms_explanation } from './pager.js';
 import { u_on_newpos } from './mklev.js';
 import { room_discovered } from './dungeon.js';
 import { inside_room } from './sp_lev.js';
-import { record_achievement, boulder_hits_pool } from './do.js';
+import { boulder_hits_pool } from './do.js';
 import { ACH_TOWN } from './const.js';
 import { RUN_TPORT, RUN_LEAP } from './const.js';
 import { flush_screen as flush_screen_hk } from './display.js';
@@ -116,7 +117,7 @@ import { bad_rock, passes_bars, minliquid } from './mon.js';
 import { engr_at, wipe_engr_at, can_reach_floor } from './engrave.js';
 import { an, xname, The } from './objnam.js';
 import { the } from './iactions.js';
-import { obj_extract_self, place_object } from './mkobj.js';
+import { obj_extract_self, place_object, level_objects_at } from './mkobj.js';
 import { a_monnam, y_monnam } from './do_name.js';
 import { set_ustuck, stumble_onto_mimic } from './uhitm.js';
 import { CONFLICT, HVY_ENCUMBER } from './const.js';
@@ -125,7 +126,7 @@ import { AT_ENGL, AT_HUGS, AD_STCK, AD_RUST, AD_CORR, M1_METALLIVORE } from './m
 import { WT_SQUEEZABLE_INV, A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
          LEVEL_TELEP, TELEP_TRAP, ROLLING_BOULDER_TRAP } from './const.js';
 import { CORPSE } from './objects.js';
-import { is_flyer, is_floater, dmgtype } from './mondata.js';
+import { is_flyer, is_floater, dmgtype, digests } from './mondata.js';
 import { float_vs_flight } from './polyself.js';
 import { pickup } from './pickup.js';
 import { shop_keeper, u_left_shop, u_entered_shop, costly_spot } from './shk.js';
@@ -227,8 +228,7 @@ export async function revive_nasty(x, y, msg) {
 
     /* for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp2):
        the pile at <x,y> from the floor chain, read before any revival */
-    const pile = (game.level.objects || []).filter(
-        o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR');
+    const pile = level_objects_at(x, y);
     for (const otmp of pile) {
         if (otmp.otyp === CORPSE
             && (is_rider(mons[otmp.corpsenm])
@@ -512,8 +512,18 @@ async function pickup_checks() {
     const u = game.u;
 
     /* uswallow case added by GAN 01/29/87 */
-    if (u.uswallow)
-        throw new Error('pickup_checks(): picking up while engulfed not ported yet');
+    if (u.uswallow) {
+        if (!u.ustuck.minvent) {
+            if (digests(u.ustuck.data)) {
+                await You(`pick up ${s_suffix(mon_nam(u.ustuck))} tongue.`);
+                await pline("But it's kind of slimy, so you drop it.");
+            } else
+                await You(`don't ${Blind() ? "feel" : "see"} anything in here to pick up.`);
+            return 1;
+        } else {
+            return -2; /* loot the monster inventory */
+        }
+    }
     if (is_pool(u.ux, u.uy))
         throw new Error('pickup_checks(): picking things up in water not ported yet');
     if (is_lava(u.ux, u.uy))
@@ -1745,8 +1755,19 @@ export async function spoteffects(pick) {
                 await pickup(1);
         }
         /* Warning alerts you to ice danger */
-        if (Warning() && game.level.at(u.ux, u.uy).typ === ICE)
-            throw new Error('spoteffects(): ice warnings (spot_time_left()) not ported yet');
+        if (Warning() && is_ice_sf(u.ux, u.uy)) {
+            const icewarnings = [
+                "The ice seems very soft and slushy.",
+                "You feel the ice shift beneath you!",
+                "The ice, is gonna BREAK!", /* The Dead Zone */
+            ];
+            const time_left = spot_time_left_sc(u.ux, u.uy, MELT_ICE_AWAY_SC);
+
+            if (time_left && time_left < 15)
+                await pline(icewarnings[(time_left < 5) ? 2
+                                        : (time_left < 10) ? 1
+                                          : 0]);
+        }
 
         if ((mtmp = m_at(u.ux, u.uy)) != null && !u.uswallow) {
             mtmp.mundetected = mtmp.msleeping = 0;
@@ -1840,7 +1861,7 @@ function block_entry(x, y) {
 }
 
 // C ref: hack.c doorless_door()
-function doorless_door(x, y) {
+export function doorless_door(x, y) {
     const lev_p = game.level.at(x, y);
 
     if (!IS_DOOR(lev_p.typ))
@@ -2780,8 +2801,7 @@ async function moverock_core(sx, sy) {
         firstboulder = false;
 
         /* make sure that this boulder is visible as the top object */
-        const top = (game.level.objects || []).find(
-            o => o.ox === sx && o.oy === sy && o.where === 'OBJ_FLOOR');
+        const top = level_objects_at(sx, sy)[0] || null;
         if (otmp !== top)
             movobj(otmp, sx, sy);
 

@@ -40,8 +40,8 @@ import { ABASE, AMAX, adjattrib, adjalign, change_luck, exercise } from './attri
 import { losexp } from './exper.js';
 import { near_capacity, nomul } from './hack.js';
 import { paranoid_query } from './cmd.js';
-import { welded } from './wield.js';
-import { which_armor, sobj_at, is_pool, is_lava, m_at, set_malign } from './makemon.js';
+import { welded, freehand } from './wield.js';
+import { sobj_at, is_pool, is_lava, m_at, set_malign } from './makemon.js';
 import { confers_luck } from './timeout.js';
 import { region_danger } from './region.js';
 import { xlev_to_rank } from './botl.js';
@@ -131,6 +131,8 @@ import { mksobj, mkobj, bless, place_object, rnd_class, SPBOOK_no_NOVEL } from '
 import { dropy } from './do.js';
 import { oname } from './do_name.js';
 import { uhis } from './mhitu.js';
+import { which_armor } from './worn.js';
+import { shieldeff } from './display.js';
 /* C ref: defsym.h S_altar (cmap index) */
 const S_altar = 33;
 const NH_BLACK = "black"; /* color.h */
@@ -355,13 +357,6 @@ function a_align(x, y) {
 }
 /* C ref: obj.h Cursed_obj() */
 function Cursed_obj(obj, typ) { return !!(obj && obj.otyp === typ && obj.cursed); }
-
-// C ref: engrave.c freehand()
-function freehand() {
-    const uwep = game.uwep;
-    return (!uwep || !welded(uwep)
-            || (!bimanual(uwep) && (!game.uarms || !game.uarms.cursed)));
-}
 
 // C ref: pray.c critically_low_hp()
 /* critically low hit points if hp <= 5 or hp <= maxhp/N for some N */
@@ -698,14 +693,14 @@ async function god_zaps_you(resp_god) {
     } else {
         await pline("Suddenly, a bolt of lightning strikes you!");
         if (Reflecting()) { /* Reflecting */
-            /* shieldeff(u.ux, u.uy): transient display only */
+            await shieldeff(game.u.ux, game.u.uy);
             if (Blind())
                 await pline("For some reason you're unaffected.");
             else
                 await ureflects_pr("%s reflects from your %s.", "It");
             monstseesu_pr(M_SEEN_REFL);
         } else if (Shock_resistance()) { /* Shock_resistance */
-            /* shieldeff(u.ux, u.uy) */
+            await shieldeff(game.u.ux, game.u.uy);
             await pline("It seems not to affect you.");
             monstseesu_pr(M_SEEN_ELEC);
             monstunseesu_pr(M_SEEN_REFL);

@@ -2936,7 +2936,9 @@ export function u_at(x, y) { return x === game.u.ux && y === game.u.uy; }
 
 // Canonical macros — previously duplicated as local stubs in 15+ files
 export function OBJ_AT(x, y) { return game?.level?.objects?.some(o => o.ox === x && o.oy === y) ?? false; }
-export function Has_contents(obj) { return obj?.cobj != null; }
+/* C ref: obj.h Has_contents() -- (o)->cobj != NULL; a JS container keeps
+   its contents in an array, which is empty (or null) when C's is NULL */
+export function Has_contents(obj) { return !!(obj?.cobj && obj.cobj.length); }
 export function M_AP_TYPE(mon) { return mon?.m_ap_type ?? 0; }
 export function engulfing_u(mon) { const g = (typeof game !== 'undefined' ? game : null); return g?.u?.uswallow && g?.u?.ustuck === mon; }
 // C ref: permonst.h — ismnum(x) means x is a valid monster index.

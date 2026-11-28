@@ -610,6 +610,13 @@ export function menucolor_text(body, matchText = body) {
         // windows.c matches the original string before tty clips it for display.
         if (mc.match.test(matchText)) {
             const c = mc.color;
+            /* inverse / underline paint blanks: the recorded terminal still
+             * carries a run of more than four blanks as cursor-forward
+             * (unpainted cells), as tty_menu.js does for reverse-video rows.
+             * #enhance's " %s %-*s [%s]" padding under MENUCOLOR=...&inverse
+             * records "  dagger\e[12C[Unskilled]" (weapon.c:1291). */
+            if (SPACE_PAINTING_ATTRS.has(mc.attr))
+                body = body.replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
             // termcap.c:1010 gray has no color escape. NOMUX also serializes
             // black as default when !use_darkgray: nomux_set_fg leaves zero,
             if (c === NO_COLOR || c === CLR_GRAY
@@ -624,6 +631,17 @@ export function menucolor_text(body, matchText = body) {
     return body;
 }
 
+/* ATR_ULINE (4) and ATR_INVERSE (7), attrnames[] above: the attributes that
+ * paint a blank cell. */
+const SPACE_PAINTING_ATTRS = new Set([4, 7]);
+
+function menucolor_match(matchText) {
+    if (!game.iflags.use_menu_color || !game.menu_colorings?.length) return null;
+    for (const mc of game.menu_colorings)
+        if (mc.match.test(matchText)) return mc;
+    return null;
+}
+
 /* C ref: windows.c:1796-1809 add_menu() menucolors the entry's RAW str (the
  * BUC/unpaid/class rows of query_category arrive this way, pickup.c:1320-1445);
  * tty_add_menu bakes "%c - " on AFTER (wintty.c:2604-2611) and the tty colours
@@ -636,6 +654,13 @@ export function menucolor_row(text) {
     const m = /^(.) (\x01?[-+#*]) (.*)$/.exec(t);
     if (m) return `${m[1]} ${m[2][0] === '\x01' ? menucolor_text(m[2].slice(1), m[3]) : m[2]} ${menucolor_text(m[3])}`;
     const pad = (/^ +/.exec(t) || [''])[0];
+    /* wintty.c:1441-1456: with no "x - " selector attr_n is 0, so the pad
+     * blanks are written under the attribute too -- visible in reverse video
+     * or underline (#enhance's unselectable " %s %-*s [%s]" rows,
+     * weapon.c:1291: " \e[7;35m  dagger..."). */
+    const mc = menucolor_match(t);
+    if (pad && mc && SPACE_PAINTING_ATTRS.has(mc.attr))
+        return menucolor_text(t);
     return pad + menucolor_text(t.slice(pad.length));
 }
 

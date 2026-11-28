@@ -61,9 +61,6 @@ import { dropx } from './do.js';
 import { Blind } from './youprop.js';
 import { nohands, verysmall, could_twoweap, cantwield } from './mondata.js';
 
-// C ref: worn.c setworn() -- in worn.js
-export { setworn };
-
 // C ref: wield.c setuwep()
 export function setuwep(obj) {
     const olduwep = game.uwep;
@@ -203,9 +200,6 @@ export function uqwepgone() {
         /* update_inventory(): no perm_invent */
     }
 }
-
-// C ref: artifact.c retouch_object() (ported in artifact.js)
-export { retouch_object };
 
 // C ref: wield.c ready_weapon()
 // C ref: wield.c cant_wield_corpse()
@@ -744,7 +738,7 @@ async function quivering(verb, newquiver, was_uwep, was_twoweap) {
 }
 
 // C ref: wield.c erodeable_wep() -- used by will_weld()
-function erodeable_wep(optr) {
+export function erodeable_wep(optr) {
     return (optr.oclass === WEAPON_CLASS || is_weptool(optr)
             || optr.otyp === HEAVY_IRON_BALL || optr.otyp === IRON_CHAIN);
 }

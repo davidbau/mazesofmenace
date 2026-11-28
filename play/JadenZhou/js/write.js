@@ -15,7 +15,7 @@ import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_NOFLAGS,
 import { M1_NOHANDS, PM_WIZARD } from './monsters.js';
 import { getobj, useup, obfree } from './invent.js';
 import { tty_getlin } from './wintty.js';
-import { mungspaces, strstri, upstart } from './hacklib.js';
+import { mungspaces, strstri, upstart, strncmpi } from './hacklib.js';
 import { an, The, Tobjnam, aobjnam } from './objnam.js';
 import { ysimple_name } from './iactions.js';
 import { fingers_or_gloves } from './do_wear.js';
@@ -33,10 +33,6 @@ import { nohands } from './mondata.js';
 /* C ref: hacklib.c strcmpi() == 0 */
 function strcmpi_eq(s1, s2) {
     return s1 != null && s2 != null && s1.toLowerCase() === s2.toLowerCase();
-}
-/* C ref: hacklib.c strncmpi() == 0 */
-function strncmpi_eq(s1, s2, n) {
-    return s1.slice(0, n).toLowerCase() === s2.slice(0, n).toLowerCase();
 }
 
 // C ref: write.c cost()
@@ -157,11 +153,11 @@ export async function dowrite(pen) {
     if (namebuf[0] === '\x1b' || !namebuf[0])
         return ECMD_TIME;
     nm = namebuf;
-    if (strncmpi_eq(nm, "scroll ", 7))
+    if (!strncmpi(nm, "scroll ", 7))
         nm = nm.slice(7);
-    else if (strncmpi_eq(nm, "spellbook ", 10))
+    else if (!strncmpi(nm, "spellbook ", 10))
         nm = nm.slice(10);
-    if (strncmpi_eq(nm, "of ", 3))
+    if (!strncmpi(nm, "of ", 3))
         nm = nm.slice(3);
 
     if ((bp = strstri(nm, " armour")) >= 0) {

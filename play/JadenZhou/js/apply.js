@@ -10,7 +10,6 @@ import { game } from './gstate.js';
 import { You, You_hear, pline_mon } from './display.js';
 import { getobj } from './invent.js';
 import { check_capacity } from './hack.js';
-import { retouch_object } from './wield.js';
 import { pick_lock } from './lock.js';
 import * as O from './objects.js';
 import { thesimpleoname } from './iactions.js';
@@ -100,7 +99,7 @@ import { Confusion, Stunned } from './youprop.js';
 import { ART_SNICKERSNEE } from './artilist.js';
 import { simpleonames as simpleonames_ap } from './iactions.js';
 import { NON_PM as NON_PM_AP } from './const.js';
-import { arti_speak } from './artifact.js';
+import { arti_speak, retouch_object } from './artifact.js';
 import { stucksteed } from './steed.js';
 import { legs_in_no_shape } from './dokick.js';
 import { reset_utrap, fire_damage, activate_statue_trap } from './trap.js';
@@ -130,7 +129,7 @@ import { litroom as litroom_bw } from './read.js';
 import { M_AP_TYPE as M_AP_TYPE_AP, M_AP_OBJECT as M_AP_OBJECT_AP,
          M_AP_MONSTER as M_AP_MONSTER_AP,
          M_AP_FURNITURE as M_AP_FURNITURE_AP } from './const.js';
-import { obj_typename as obj_typename_ap } from './objnam.js';
+import { simple_typename } from './objnam.js';
 import { pmname as pmname_ap, Mgender as Mgender_ap } from './do_name.js';
 import { defsyms_explanation as defsyms_explanation_ap } from './pager.js';
 import { seemimic as seemimic_ap } from './mon.js';
@@ -431,7 +430,7 @@ async function use_stethoscope(obj) {
                     };
                     what = simpleonames_ap(odummy);
                 } else {
-                    what = simple_typename_ap(otyp);
+                    what = simple_typename(otyp);
                 }
                 /* is_boots(odummy) || is_gloves(odummy) || LENSES */
                 use_plural = ((objects[otyp].oc_class === O.ARMOR_CLASS
@@ -525,18 +524,6 @@ async function flip_through_book(obj) {
 
 /* C ref: mextra.h has_mcorpsenm() */
 function has_mcorpsenm_ap(mtmp) { return mtmp.mextra?.mcorpsenm !== undefined; }
-/* C ref: objnam.c simple_typename() -- obj_typename() without the
-   user-assigned name or the appended description */
-function simple_typename_ap(otyp) {
-    const save_uname = objects[otyp].oc_uname;
-    objects[otyp].oc_uname = null; /* suppress any name given by user */
-    let bufp = obj_typename_ap(otyp);
-    objects[otyp].oc_uname = save_uname;
-    const pp = bufp.indexOf(" (");
-    if (pp >= 0)
-        bufp = bufp.slice(0, pp); /* strip the appended description */
-    return bufp;
-}
 
 // C ref: apply.c use_cream_pie()
 async function use_cream_pie(obj) {

@@ -7,7 +7,7 @@
 
 import { DEADMONSTER } from './mon.js';
 import { helpless } from './monmove.js';
-import { monsym } from './makemon.js';
+import { monsym, is_lminion } from './makemon.js';
 import { game } from './gstate.js';
 import { ROLL_FROM, rn2, rnd } from './rng.js';
 import * as MM from './monsters.js';
@@ -29,8 +29,6 @@ import { pline } from './display.js';
 import { Monnam } from './do_name.js';
 import { com_pager } from './questpgr.js';
 import { wake_nearto } from './mon.js';
-import { mon_aligntyp } from './priest.js';
-import { A_LAWFUL } from './const.js';
 import { STRAT_NONE, STRAT_HEAL, STRAT_GROUND, STRAT_MONSTR, STRAT_PLAYER,
          STRAT_WAITMASK, STRAT_APPEARMSG, STRAT_STRATMASK, STRAT_GOAL,
          RLOC_MSG, BOLT_LIM, u_at } from './const.js';
@@ -315,11 +313,6 @@ const random_malediction = [
     "Thou art doomed,", "Thy fate is sealed,",
     "Verily, thou shalt be one dead"
 ];
-
-/* C ref: mondata.h is_lminion() */
-function is_lminion(mon) {
-    return is_minion(mon.data) && mon_aligntyp(mon) === A_LAWFUL;
-}
 
 // C ref: wizard.c cuss()
 /* Insult or intimidate the player */

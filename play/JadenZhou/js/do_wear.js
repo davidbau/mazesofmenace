@@ -16,18 +16,17 @@ import { curse } from './mkobj.js';
 import { Hallucination, Underwater, Swimming, Breathless } from './youprop.js';
 import { ACURR, ABASE, ABON, ATEMP } from './attrib.js';
 import { begin_burn, end_burn } from './timeout.js';
-import { hliquid } from './potion.js';
+import { hliquid, incr_itimeout } from './potion.js';
 import { drown } from './trap.js';
 import { is_pool_or_lava } from './hack.js';
 import { set_bc } from './ball.js';
 import { M1_SWIM, M1_AMPHIBIOUS } from './monsters.js';
-import { cantweararm } from './worn.js';
+import { cantweararm, WrappingAllowed, setworn } from './worn.js';
 import { has_horns } from './polyself.js';
 import { impossible } from './hack.js';
 import { is_flyer, nohands, verysmall, bigmonst, humanoid, slithy,
-         noncorporeal, is_whirly, mindless, has_head, breathless,
+         is_whirly, mindless, has_head, breathless,
          num_horns } from './mondata.js';
-import { itimeout } from './potion.js';
 import { game } from './gstate.js';
 import { make_slimed, make_glib, make_hallucinated } from './potion.js';
 import { pline, You, Your, There, pline_The, newsym, see_monsters,
@@ -40,10 +39,10 @@ import { ARMOR_CLASS, RING_CLASS, AMULET_CLASS, MEAT_RING, BLINDFOLD, TOWEL,
          LENSES, is_helmet, is_shield, is_cloak, is_shirt, is_suit, is_sword,
          is_flimsy, is_boots, is_gloves, bimanual, is_metallic, is_crackable,
          is_rustprone, is_corrodeable } from './objects.js';
-import { M1_NOHANDS, MZ_SMALL, MZ_LARGE, MZ_HUGE, M1_NOLIMBS, M1_HUMANOID,
+import { M1_NOHANDS, MZ_SMALL, MZ_LARGE, M1_NOLIMBS, M1_HUMANOID,
          M1_NOHEAD, M1_SLITHY, M1_FLY, M1_MINDLESS, M1_BREATHLESS, S_CENTAUR,
-         S_GHOST, S_VORTEX, mons, PM_AIR_ELEMENTAL, PM_MARILITH,
-         PM_WINGED_GARGOYLE, PM_HORNED_DEVIL, PM_MINOTAUR, PM_ASMODEUS,
+         S_GHOST, S_VORTEX, PM_AIR_ELEMENTAL,
+         PM_HORNED_DEVIL, PM_MINOTAUR, PM_ASMODEUS,
          PM_BALROG, PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN,
          PM_KI_RIN, PM_WIZARD } from './monsters.js';
 import { xname, an, makeplural, Tobjnam, obj_is_pname } from './objnam.js';
@@ -53,8 +52,7 @@ import * as O from './objects.js';
 import { prinv } from './invent.js';
 import { tty_yn_function } from './wintty.js';
 import { body_part } from './insight.js';
-import { setworn, setuwep, setuswapwep, setuqwep, welded,
-         retouch_object } from './wield.js';
+import { setuwep, setuswapwep, setuqwep, welded } from './wield.js';
 import { W_RING, W_AMUL, W_TOOL, W_SADDLE, W_WEAPONS, LEFT_RING, RIGHT_RING,
          FINGER, GLIB } from './const.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP,
@@ -131,7 +129,7 @@ import { has_ceiling as has_ceiling_bo } from './insight.js';
 import { spoteffects as spoteffects_bo } from './hack.js';
 import { float_down as float_down_bo } from './trap.js';
 import { FROMOUTSIDE as FROMOUTSIDE_BO } from './const.js';
-import { artifact_light } from './artifact.js';
+import { artifact_light, retouch_object } from './artifact.js';
 import { obj_resists as obj_resists_dw } from './dogmove.js';
 import { urgent_pline as urgent_pline_dw } from './display.js';
 import { vtense as vtense_dw } from './objnam.js';
@@ -146,13 +144,6 @@ const c_armor = "armor", c_suit = "suit", c_shirt = "shirt",
     c_helmet = "helmet", c_shield = "shield", c_weapon = "weapon",
     c_sword = "sword", c_axe = "axe", c_that_ = "that";
 void c_helmet;
-
-/* C ref: obj.h WrappingAllowed() */
-function WrappingAllowed(mptr) {
-    return humanoid(mptr) && mptr.msize >= MZ_SMALL && mptr.msize <= MZ_HUGE
-        && !noncorporeal(mptr) && mptr.mlet !== S_CENTAUR
-        && mptr !== mons[PM_WINGED_GARGOYLE] && mptr !== mons[PM_MARILITH];
-}
 
 // C ref: do_wear.c fingers_or_gloves() -- plural "fingers" or optionally
 // "gloves"
@@ -274,7 +265,7 @@ async function on_msg(otmp) {
 const NH_BLACK = "black";
 
 /* C ref: mondata.h cant_drown() */
-function cant_drown(ptr) {
+export function cant_drown(ptr) {
     return ((ptr.mflags1 & M1_SWIM) !== 0 || (ptr.mflags1 & M1_AMPHIBIOUS) !== 0
             || breathless(ptr));
 }
@@ -358,12 +349,6 @@ async function toggle_displacement(obj,
  * The Type_off() functions call setworn() themselves.
  * [Blindf_on() is an exception and calls setworn() itself.]
  */
-
-// C ref: timeout.c itimeout(), itimeout_incr(), incr_itimeout()
-function incr_itimeout(prop, incr) {
-    const p = uprop(prop);
-    p.intrinsic = (p.intrinsic & ~TIMEOUT) | itimeout((p.intrinsic & TIMEOUT) + incr);
-}
 
 // C ref: do_wear.c Boots_on()
 async function Boots_on() {

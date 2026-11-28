@@ -13,9 +13,10 @@ import { remove_worm, place_worm_tail_randomly } from './worm.js';
 import { rn2, rnl } from './rng.js';
 import { pline, pline_mon, verbalize } from './display.js';
 import { tty_getlin } from './wintty.js';
-import { In_endgame, In_quest, In_mines, TELEPORT_CONTROL, STUNNED, CONFUSION } from './const.js';
+import { In_endgame, In_quest, In_mines, TELEPORT_CONTROL, STUNNED, CONFUSION,
+         is_hole, is_pit } from './const.js';
 import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level, find_hell,
-         print_dungeon, ledger_no } from './dungeon.js';
+         print_dungeon, ledger_no, single_level_branch } from './dungeon.js';
 import { schedule_goto, UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_PORTAL } from './do.js';
 import {
     COLNO, ROWNO, ZAP_POS, isok, GP_ALLOW_XY, GP_CHECKSCARY, NO_MM_FLAGS,
@@ -41,7 +42,7 @@ import { set_ustuck } from './uhitm.js';
 import { Monnam, mon_nam, Amonnam } from './do_name.js';
 import { maybe_unhide_at } from './mon.js';
 import { set_apparxy, mon_track_clear, dochugw, onscary } from './monmove.js';
-import { mintrap, seetrap, t_at, is_hole, is_pit, HOLE, TRAPDOOR, TELEP_TRAP,
+import { mintrap, seetrap, t_at, HOLE, TRAPDOOR, TELEP_TRAP,
          LEVEL_TELEP, MAGIC_PORTAL, NO_TRAP, Trap_Effect_Finished,
          Trap_Moved_Mon, clamp_hole_destination } from './trap.js';
 import { migrate_to_level } from './dog.js';
@@ -1691,12 +1692,6 @@ export function random_teleport_level() {
         }
     }
     return nlev;
-}
-
-/* C ref: dungeon.c single_level_branch() -- only Fort Ludios */
-function single_level_branch(lev) {
-    const knox = game.dungeon_topology?.d_knox_level;
-    return !!(knox && (knox.dnum || knox.dlevel) && on_level(lev, knox));
 }
 
 // C ref: teleport.c mlevel_tele_trap()

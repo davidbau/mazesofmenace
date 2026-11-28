@@ -302,7 +302,7 @@ async function put_monsters_to_sleep(distance) {
         if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
             continue;
         if (mdistu(mtmp) < distance
-            && sleep_monst_mu(mtmp, d_mu(10, 10), TOOL_CLASS)) {
+            && await sleep_monst_mu(mtmp, d_mu(10, 10), TOOL_CLASS)) {
             mtmp.msleeping = 1; /* 10d10 turns + wake_nearby to rouse */
             await slept_monst_mu(mtmp);
         }

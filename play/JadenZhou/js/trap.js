@@ -37,7 +37,7 @@ import { PM_WIZARD, PM_ELF, PM_VALKYRIE } from './monsters.js';
 import { rn2, rnl } from './rng.js';
 import { dunlev, dunlevs_in_dungeon, In_hell } from './dungeon.js';
 import {
-    ROOM, CORR, DOOR, STONE, SCORR, SDOOR, DRAWBRIDGE_UP, STAIRS, LADDER,
+    ROOM, CORR, DOOR, STONE, SCORR, SDOOR, DRAWBRIDGE_UP,
     IS_FURNITURE, IS_WALL, IS_POOL, IS_ROOM, LAVAPOOL, In_quest,
     CORPSTAT_NONE, MM_NOCOUNTBIRTH, MM_NOMSG,
     TOOKPLUNGE, VIASITTING, HURTLING, isok,
@@ -92,7 +92,7 @@ import { crawl_destination } from './hack.js';
 import { linedup } from './monmove.js';
 import { xdir, ydir, N_DIRS, ZAP_POS, is_xport } from './const.js';
 import { mongone, wake_nearto, wake_nearby } from './mon.js';
-import { newsym, pline, urgent_pline, You_feel, You_hear } from './display.js';
+import { newsym, pline, urgent_pline, You_feel, You_hear, shieldeff } from './display.js';
 import { done } from './end.js';
 import { killer } from './topten.js';
 import { DIED } from './const.js';
@@ -163,7 +163,8 @@ import { MAY_DESTROY as MAY_DESTROY_L, MAY_HIT as MAY_HIT_L,
 import { del_engr_at as del_engr_at_l } from './engrave.js';
 import { is_drawbridge_wall as is_drawbridge_wall_l } from './dbridge.js';
 import { find_drawbridge as find_drawbridge_l } from './zap.js';
-import { fillholetyp as fillholetyp_l, unearth_objs as unearth_objs_l } from './dig.js';
+import { fillholetyp as fillholetyp_l, unearth_objs as unearth_objs_l,
+         grounded } from './dig.js';
 import { M1_SLITHY, M1_NOLIMBS } from './monsters.js';
 import { CAN_OF_GREASE, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS,
          GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES,
@@ -374,7 +375,7 @@ import { maybe_dunk_boulders } from './apply.js';
 import { spot_checks } from './hack.js';
 import { sellobj } from './shk.js';
 import { pline_mon } from './display.js';
-export { is_hole, is_pit };
+import { CAN_OVERWRITE_TERRAIN } from './mkmaze.js';
 
 
 // C ref: trap.c mk_trap_statue()
@@ -433,14 +434,9 @@ export const TRAPPED_CHEST = 25;
 export const TRAPNUM = 26;
 
 // C ref: trap.h is_pit(), is_hole(), unhideable_trap(), undestroyable_trap()
-function unhideable_trap(ttyp) { return ttyp === HOLE; }
+export function unhideable_trap(ttyp) { return ttyp === HOLE; }
 export function undestroyable_trap(ttyp) {
     return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
-}
-
-// C ref: rm.h CAN_OVERWRITE_TERRAIN()  (stairs and ladders can't be)
-function CAN_OVERWRITE_TERRAIN(typ) {
-    return typ !== STAIRS && typ !== LADDER;
 }
 
 function ftraps() {
@@ -1395,13 +1391,9 @@ const A_gush_of_water_hits = "A gush of water hits";
 /* C ref: mondata.h passes_rocks(), grounded(); obj.h stone_missile();
    trap.c completelyrusts */
 export function passes_rocks(ptr) { return passes_walls(ptr) && !unsolid(ptr); }
-function grounded(ptr) {
-    /* has_ceiling(&u.uz): no air or water levels are generated yet */
-    return !is_flyer(ptr) && !is_floater(ptr) && !is_clinger(ptr);
-}
 
 // C ref: trap.c wearing_iron_shoes()
-function wearing_iron_shoes(mtmp) {
+export function wearing_iron_shoes(mtmp) {
     const armf = which_armor(mtmp, W_ARMF);
     return !!armf && objects[armf.otyp].oc_material === IRON;
 }
@@ -1863,7 +1855,7 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
 
 // C ref: mhitm.c sleep_monst()
 /* `mon' is hit by a sleep attack; return 1 if it's affected, 0 otherwise */
-export function sleep_monst(mon, amt, how) {
+export async function sleep_monst(mon, amt, how) {
     /* reveal mimic unless already asleep or paralyzed (won't be 'busy') */
     if (how >= 0 && !mon.msleeping && !mon.mfrozen
         && mon.data.mlet === S_MIMIC && (mon.m_ap_type === M_AP_FURNITURE
@@ -1872,7 +1864,7 @@ export function sleep_monst(mon, amt, how) {
 
     if (resists_sleep(mon) || defended(mon, AD_SLEE)
         || (how >= 0 && resist(mon, how, 0, NOTELL))) {
-        /* shieldeff(mon->mx, mon->my): display effect only */
+        await shieldeff(mon.mx, mon.my);
     } else if (mon.mcanmove) {
         finish_meating(mon); /* terminate any meal-in-progress */
         amt += (mon.mfrozen || 0);
@@ -1905,7 +1897,7 @@ async function trapeffect_slp_gas_trap(mtmp, trap, trflags) {
 
         if (!resists_sleep(mtmp) && !breathless(mtmp.data)
             && !helpless(mtmp)) {
-            if (sleep_monst(mtmp, rnd(25), -1) && in_sight) {
+            if (await sleep_monst(mtmp, rnd(25), -1) && in_sight) {
                 await pline_mon(mtmp, `${Monnam(mtmp)} suddenly falls asleep!`);
                 seetrap(trap);
             }
@@ -2687,7 +2679,7 @@ async function trapeffect_fire_trap(mtmp, trap, trflags) {
         }
         if (resists_fire(mtmp)) {
             if (in_sight) {
-                /* shieldeff(mtmp->mx, mtmp->my): display effect only */
+                await shieldeff(mtmp.mx, mtmp.my);
                 await pline(`${Monnam(mtmp)} is uninjured.`);
             }
         } else {
@@ -2779,7 +2771,7 @@ async function dofiretrap(
     await pline(`A ${tower_of_flame} ${box ? "bursts" : "erupts"} from ${
         the(box ? xname(box) : surface_tr(u.ux, u.uy))}!`);
     if (Fire_resistance()) {
-        /* shieldeff(u.ux, u.uy): display effect only */
+        await shieldeff(game.u.ux, game.u.uy);
         monstseesu_tr(M_SEEN_FIRE_TR);
         num = rn2(2);
     } else if (Upolyd()) {
@@ -3730,7 +3722,7 @@ async function steedintrap(trap, otmp) {
     case SLP_GAS_TRAP:
         if (!resists_sleep(steed) && !breathless(steed.data)
             && !helpless(steed)) {
-            if (sleep_monst(steed, rnd(25), -1))
+            if (await sleep_monst(steed, rnd(25), -1))
                 /* no in_sight check here; you can feel it even if blind */
                 await pline(`${Monnam(steed)} suddenly falls asleep!`);
         }
@@ -4662,7 +4654,7 @@ async function trapeffect_poly_trap(mtmp, trap, trflags) {
         } else if (Antimagic()
                    || (u.uprops[UNCHANGING].intrinsic
                        || u.uprops[UNCHANGING].extrinsic)) { /* Unchanging */
-            /* shieldeff(u.ux, u.uy): transient display only */
+            await shieldeff(game.u.ux, game.u.uy);
             await You_feel("momentarily different.");
             /* Trap did nothing; don't remove it --KAA */
         } else {
@@ -5376,7 +5368,7 @@ export async function chest_trap(obj, bodypart, disarm) {
 
             await You("are jolted by a surge of electricity!");
             if (Shock_resistance()) {
-                /* shieldeff(u.ux, u.uy): transient display only */
+                await shieldeff(game.u.ux, game.u.uy);
                 await You("don't seem to be affected.");
                 monstseesu_tr(M_SEEN_ELEC);
                 dmg = 0;

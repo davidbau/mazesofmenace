@@ -42,6 +42,7 @@ import { WATER_WALKING_BOOTS } from './objects.js';
 import { Deaf } from './youprop.js';
 import { humanoid, slithy, amorphous, is_hider,
          is_swimmer } from './mondata.js';
+import { shieldeff } from './display.js';
 
 /* C ref: mondata.h macros used here */
 const lays_eggs = (ptr) => (ptr.mflags1 & M1_OVIPAROUS) !== 0;
@@ -206,7 +207,7 @@ export async function rndcurse() {
     }
 
     if (Antimagic()) {
-        /* shieldeff(u.ux, u.uy): transient display only */
+        await shieldeff(game.u.ux, game.u.uy);
     }
 
     await You(mal_aura("you"));

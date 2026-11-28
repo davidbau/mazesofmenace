@@ -45,12 +45,10 @@ import { cansee as cansee_tp } from './vision.js';
 import { EPRI } from './const.js';
 import { getdir } from './cmd.js';
 import { is_flyer, is_undead, is_vampshifter, same_race, is_animal,
-         is_mercenary, is_silent, is_lord, is_prince,
-         humanoid } from './mondata.js';
+         is_mercenary, is_silent, is_lord, is_prince } from './mondata.js';
 import { Blind, Strangled, Hallucination, Deaf, Unaware } from './youprop.js';
 import { S_NYMPH as S_NYMPH_SN } from './monsters.js';
 import { could_seduce as could_seduce_sn, doseduce as doseduce_sn } from './mhitu.js';
-import { is_neuter as is_neuter_sn } from './mondata.js';
 import { M1_HUMANOID as M1_HUMANOID_SN } from './monsters.js';
 import { mhis as mhis_sn } from './mhitu.js';
 import { In_endgame as In_endgame_sn, Role_if as Role_if_sn } from './const.js';
@@ -70,6 +68,7 @@ import { body_part as body_part_sn } from './insight.js';
 import { an as an_sn } from './objnam.js';
 import { pmname as pmname_sn } from './do_name.js';
 import { Upolyd as Upolyd_sn, BLOOD as BLOOD_SN, FEMALE as FEMALE_SN, MALE as MALE_SN } from './const.js';
+import { poly_gender } from './polyself.js';
 
 /* C ref: mondata.h predicates */
 
@@ -1141,9 +1140,9 @@ async function domonnoise(mtmp) {
                 await doseduce_sn(mtmp);
                 break;
             }
-            swval = ((poly_gender_sn() !== (mtmp.female ? 1 : 0)) ? rn2(3) : 0);
+            swval = ((poly_gender() !== (mtmp.female ? 1 : 0)) ? rn2(3) : 0);
         } else
-            swval = ((poly_gender_sn() === 0) ? rn2(3) : 0);
+            swval = ((poly_gender() === 0) ? rn2(3) : 0);
         switch (swval) {
         case 2:
             verbl_msg = "Hello, sailor.";
@@ -1311,10 +1310,3 @@ async function dochat() {
     return await domonnoise(mtmp);
 }
 
-/* C ref: polyself.c poly_gender() -- gender of polymorphed player;
-   0/1=same meaning as flags.female, 2=none */
-function poly_gender_sn() {
-    if (is_neuter_sn(game.youmonst.data) || !humanoid(game.youmonst.data))
-        return 2;
-    return game.flags.female ? 1 : 0;
-}

@@ -39,7 +39,7 @@ import { discover_object } from './o_init.js';
 import { freehand } from './wield.js';
 import { Blind as Blind_sp } from './youprop.js';
 import { Role_if } from './const.js';
-import { uhim } from './mhitu.js';
+import { uhim, enfolds } from './mhitu.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
 import * as O from './objects.js';
 import { SPE_BOOK_OF_THE_DEAD, SPE_BLANK_PAPER, SPE_NOVEL, SPE_DETECT_FOOD,
@@ -49,7 +49,7 @@ import { tele } from './teleport.js';
 import { aggravate, make_blinded, make_confused, make_stunned, trycall,
          peffects, healup, make_slimed } from './potion.js';
 import { erode_obj, losehp, Maybe_Half_Phys } from './trap.js';
-import { poison_strdmg, exercise as exercise_sp } from './attrib.js';
+import { poison_strdmg, exercise } from './attrib.js';
 import { body_part } from './insight.js';
 import { tty_display_nhwindow, tty_yn_function } from './wintty.js';
 import { useup, obfree } from './invent.js';
@@ -75,12 +75,12 @@ import { hcolor as hcolor_sp } from './do_name.js';
 import { hliquid as hliquid_sp } from './potion.js';
 import { an as an_sp } from './objnam.js';
 import { find_ac as find_ac_sp } from './u_init.js';
-import { dmgtype_fromattack as dmgtype_fromattack_sp } from './mondata.js';
 import { CLOUD as CLOUD_SP, IS_TREE as IS_TREE_SP, IS_STWALL as IS_STWALL_SP } from './const.js';
 import { S_VORTEX as S_VORTEX_SP, PM_AIR_ELEMENTAL as PM_AIR_ELEMENTAL_SP,
-         PM_FOG_CLOUD as PM_FOG_CLOUD_SP, M1_ANIMAL as M1_ANIMAL_SP,
-         AD_WRAP as AD_WRAP_SP, AT_ENGL as AT_ENGL_SP } from './monsters.js';
+         PM_FOG_CLOUD as PM_FOG_CLOUD_SP,
+         M1_ANIMAL as M1_ANIMAL_SP } from './monsters.js';
 import { rndcurse } from './sit.js';
+import { shieldeff } from './display.js';
 
 const KEEN = 20000; /* C ref: spell.c */
 
@@ -369,7 +369,7 @@ async function cursed_book(bp) {
         break;
     case 6:
         if (u_have_prop(ANTIMAGIC)) {
-            /* shieldeff(u.ux, u.uy): transient display only */
+            await shieldeff(game.u.ux, game.u.uy);
             await pline_The("book explodes, but you are unharmed!");
         } else {
             await pline(`As you read the book, it explodes in your ${body_part(FACE)}!`);
@@ -1183,8 +1183,6 @@ export function force_learn_spell(otyp) {
     return spellet(i);
 }
 
-async function exercise(i, inc) { await exercise_sp(i, inc); }
-
 /* C ref: spell.c enum spl_sort_types */
 const SORTBY_LETTER = 0;
 const SORTBY_ALPHA = 1;
@@ -1697,11 +1695,6 @@ export function known_spell(otyp) {
     return spe_Unknown;
 }
 
-/* C ref: mondata.h enfolds() */
-function enfolds_sp(ptr) {
-    return dmgtype_fromattack_sp(ptr, AD_WRAP_SP, AT_ENGL_SP) != null; /* 't' */
-}
-
 // C ref: spell.c cast_protection()
 async function cast_protection() {
     const u = game.u;
@@ -1736,7 +1729,7 @@ async function cast_protection() {
                 atmosphere = (pm && u.uswallow)
                                 ? ((pm === mons_sp[PM_FOG_CLOUD_SP]) ? "mist"
                                    : is_whirly(pm) ? "maelstrom"
-                                     : enfolds_sp(pm) ? "folds"
+                                     : enfolds(pm) ? "folds"
                                        : is_animal(pm) ? "maw"
                                          : "ooze")
                                 : (u.uinwater ? hliquid_sp("water")

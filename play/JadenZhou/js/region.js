@@ -25,11 +25,11 @@ import { game } from './gstate.js';
 import { COLNO, ROWNO, isok, REG_HERO_INSIDE, REG_NOT_HEROS, MONST_INC,
          KILLED_BY_AN, M_POISONGAS_OK, M_SEEN_POISON, EYE, LUNG,
          POISON_RES, MAGICAL_BREATHING, BLINDED, TIMEOUT, TELEDS_NO_FLAGS,
-         u_at, PLNMSG_ENVELOPED_IN_GAS, ACCESSIBLE } from './const.js';
+         u_at, PLNMSG_ENVELOPED_IN_GAS} from './const.js';
 import { mons, PM_FOG_CLOUD, AD_DRST, MS_SILENT, M1_NOEYES,
          M1_BREATHLESS } from './monsters.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { m_at, nonliving, is_pool, is_lava } from './makemon.js';
+import { m_at, nonliving } from './makemon.js';
 import { block_point, unblock_point, cansee, does_block } from './vision.js';
 import {
     newsym, show_glyph_cell, pline, pline_The, You, Your, You_see, You_feel
@@ -51,6 +51,7 @@ import { TOWEL } from './objects.js';
 import {
     Poison_resistance, Blind, HMagical_breathing, EMagical_breathing, Half_gas_damage
 } from './youprop.js';
+import { valid_cloud_pos } from './read.js';
 
 const NO_CALLBACK = -1;
 // C ref: defsym.h S_cloud, S_poisoncloud (cmap indices)
@@ -886,16 +887,6 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {
 
     await make_gas_cloud(cloud, damage, inside_cloud);
     return cloud;
-}
-
-// C ref: read.c valid_cloud_pos()
-/* is <x,y> a spot where a gas cloud can spread to? */
-function valid_cloud_pos(x, y) {
-    if (!isok(x, y))
-        return false;
-    const typ = game.level.at(x, y).typ;
-    /* ACCESSIBLE(typ) || is_pool(x, y) || is_lava(x, y) */
-    return ACCESSIBLE(typ) || is_pool(x, y) || is_lava(x, y);
 }
 
 // C ref: region.c create_gas_cloud_selection()

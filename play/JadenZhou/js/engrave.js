@@ -14,17 +14,16 @@ import { altar_wrath as altar_wrath_eg } from './pray.js';
 import { is_art } from './artifact.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
-import { LL_CONDUCT } from './const.js';
+import { LL_CONDUCT, is_hole, is_pit } from './const.js';
 import { P_SKILL, dry_a_towel } from './weapon.js';
 import { P_RIDING, P_BASIC } from './const.js';
 import { rn2, rnd, rn2_fnptr } from './rng.js';
 import { DUST, BURN, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, ICE, ROOM, GRAVE } from './const.js';
 import { getrumor, get_rnd_text, ENGRAVEFILE, EPITAPHFILE, MD_PAD_RUMORS } from './rumors.js';
-import { t_at, is_pit, is_hole } from './trap.js';
+import { t_at } from './trap.js';
 import { LEVITATION, FLYING, TT_PIT, Is_airlevel, Is_waterlevel } from './const.js';
-import { ENGRAVE, MARK, BLINDED, IS_AIR, IS_POOL, LAVAPOOL, DRAWBRIDGE_DOWN,
-         IS_ALTAR, IS_GRAVE, IS_FOUNTAIN, STAIRS, LADDER, IS_WALL, SDOOR,
-         IS_DOOR, IS_ROOM } from './const.js';
+import { ENGRAVE, MARK, BLINDED, IS_AIR, DRAWBRIDGE_DOWN,
+         IS_ALTAR, IS_GRAVE, IS_FOUNTAIN } from './const.js';
 import { pline } from './display.js';
 import { nomul } from './hack.js';
 import { AD_STCK, AD_WRAP, AT_ENGL, AT_HUGS, M1_HIDE, M1_CLING, S_MIMIC,
@@ -99,36 +98,6 @@ const rubouts = [
     ['6', 'o'], ['7', '/'], ['8', '3o'],
 ];
 
-/* C ref: dungeon.c surface() -- the ordinary terrain cases; engulfers,
-   air, water, lava and drawbridges aren't reached by read_engr_at() yet */
-function engr_surface(x, y) {
-    const lev = game.level.at(x, y);
-    const levtyp = lev.typ;
-
-    if ((x === game.u.ux && y === game.u.uy && game.u.uswallow)
-        || IS_AIR(levtyp) || IS_POOL(levtyp) || levtyp === LAVAPOOL
-        || levtyp === DRAWBRIDGE_DOWN)
-        throw new Error('surface(): engulfer/air/water/lava/bridge not ported yet');
-    else if (levtyp === ICE)
-        return "ice";
-    else if (IS_ALTAR(levtyp))
-        return "altar";
-    else if (IS_GRAVE(levtyp))
-        return "headstone";
-    else if (IS_FOUNTAIN(levtyp))
-        return "fountain";
-    else if (levtyp === STAIRS || levtyp === LADDER) /* On_stairs() */
-        return "stairs";
-    else if (IS_WALL(levtyp) || levtyp === SDOOR)
-        return "wall"; /* 'surface' during Passes_walls */
-    else if (IS_DOOR(levtyp))
-        return "doorway"; /* even for closed door */
-    else if (IS_ROOM(levtyp) /* && !Is_earthlevel(&u.uz) */)
-        return "floor";
-    else
-        return "ground";
-}
-
 // C ref: engrave.c read_engr_at()
 export async function read_engr_at(x, y) {
     const ep = engr_at(x, y);
@@ -140,7 +109,7 @@ export async function read_engr_at(x, y) {
      * nor does it necessarily imply comprehension (literacy).
      */
     if (ep && ep.engr_txt.actual_text && ep.engr_txt.actual_text[0]) {
-        const eloc = engr_surface(x, y);
+        const eloc = surface(x, y);
         switch (ep.engr_type) {
         case DUST:
             if (!Blind) {

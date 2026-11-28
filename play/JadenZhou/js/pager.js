@@ -18,7 +18,8 @@
 // background (back_to_glyph()).
 
 import { SYM_OFF_X } from './symbols.js';
-import { db_under_typ } from './display.js';
+import { db_under_typ, glyph_is_warning,
+         glyph_is_invisible } from './display.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
@@ -903,8 +904,6 @@ function trap_description(tnum, x, y) {
 function glyph_is_monster(glyph) { return glyph.kind === 'mon'; }
 function glyph_is_object(glyph) { return glyph.kind === 'obj'; }
 function glyph_is_trap(glyph) { return glyph.kind === 'trap'; }
-function glyph_is_warning(glyph) { return glyph.kind === 'warning'; }
-function glyph_is_invisible(glyph) { return glyph.kind === 'invisible'; }
 function glyph_is_statue(glyph) {
     return glyph.kind === 'obj' && glyph.otyp === STATUE;
 }
@@ -1884,6 +1883,13 @@ export function pmatch(patrn, strng) {
         else if (p !== s && (p !== '?' || !s))
             return false;
     }
+}
+
+// C ref: pager.c ia_checkfile()
+export async function ia_checkfile(otmp) {
+    /* singular() of xname() of otmp is what "/i" looks up */
+    const itemnam = singular(otmp, xname);
+    return await checkfile(itemnam, null, chkfilIaCheck | chkfilDontAsk, null);
 }
 
 // C ref: pager.c checkfile() -- look in the "data" file (data.base, here

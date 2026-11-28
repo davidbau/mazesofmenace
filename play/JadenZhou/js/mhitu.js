@@ -1225,7 +1225,7 @@ export async function gazemu(mtmp, mattk) {
                 await pline_mon(mtmp, `${Monnam(mtmp)} attacks you with a fiery gaze!`);
                 stop_occupation();
                 if (Fire_resistance()) {
-                    /* shieldeff(u.ux, u.uy): display effect only */
+                    await shieldeff_mu(game.u.ux, game.u.uy);
                     await pline("The fire doesn't feel hot!"); /* pline_The() */
                     monstseesu(M_SEEN_FIRE);
                     await ugolemeffects(M.AD_FIRE, d(12, 6));
@@ -1337,7 +1337,7 @@ export function could_seduce(magr, mdef, mattk) {
 }
 
 /* C ref: mondata.h enfolds() */
-function enfolds(ptr) {
+export function enfolds(ptr) {
     return dmgtype_fromattack(ptr, M.AD_WRAP, AT_ENGL) !== null; /* 't' */
 }
 
@@ -1702,17 +1702,26 @@ async function gulpmu(mtmp, mattk) {
     case M.AD_ELEC:
         if (!mtmp.mcan && rn2(2)) {
             await pline("The air around you crackles with electricity."); /* pline_The() */
-            if (Shock_resistance())
-                throw new Error('gulpmu(): shieldeff() not ported yet');
-            else
+            if (Shock_resistance()) {
+                await shieldeff_mu(game.u.ux, game.u.uy);
+                await You("seem unhurt.");
+                monstseesu(M_SEEN_ELEC);
+                await ugolemeffects(M.AD_ELEC, tmp);
+                tmp = 0;
+            } else {
                 monstunseesu(M_SEEN_ELEC);
+            }
         } else
             tmp = 0;
         break;
     case AD_COLD:
         if (!mtmp.mcan && rn2(2)) {
             if (Cold_resistance()) {
-                throw new Error('gulpmu(): shieldeff() not ported yet');
+                await shieldeff_mu(game.u.ux, game.u.uy);
+                await You_feel("mildly chilly.");
+                monstseesu(M_SEEN_COLD);
+                await ugolemeffects(AD_COLD, tmp);
+                tmp = 0;
             } else {
                 await pline("You are freezing to death!"); /* You() */
                 monstunseesu(M_SEEN_COLD);
@@ -1723,7 +1732,11 @@ async function gulpmu(mtmp, mattk) {
     case M.AD_FIRE:
         if (!mtmp.mcan && rn2(2)) {
             if (Fire_resistance()) {
-                throw new Error('gulpmu(): shieldeff() not ported yet');
+                await shieldeff_mu(game.u.ux, game.u.uy);
+                await You_feel("mildly hot.");
+                monstseesu(M_SEEN_FIRE);
+                await ugolemeffects(M.AD_FIRE, tmp);
+                tmp = 0;
             } else {
                 await pline("You are burning to a crisp!"); /* You() */
                 monstunseesu(M_SEEN_FIRE);

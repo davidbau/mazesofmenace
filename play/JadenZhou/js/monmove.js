@@ -26,7 +26,7 @@ import { W_NONDIGGABLE as W_NONDIGGABLE_MM } from './const.js';
 import { dmgtype as dmgtype_mm, is_animal, mindless, nohands, verysmall,
          hides_under, amorphous, likes_gems, throws_rocks, tunnels, needspick,
          is_covetous, is_mercenary, likes_gold, likes_magic, metallivorous,
-         unique_corpstat, is_rider, likes_objs, is_unicorn, likes_lava,
+         unique_corpstat, is_rider, likes_objs, is_unicorn,
          is_watch, is_mind_flayer, webmaker,
          slimeproof as
          slimeproof_mo, is_armed, attacktype, noattacks,
@@ -59,7 +59,8 @@ import { castmu } from './mcastu.js';
 import { M_ATTK_HIT, G_GENOD } from './const.js';
 import { Is_rogue_level, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, NORMAL_SPEED } from './const.js';
 import { mattackm } from './mhitm.js';
-import { obj_resists, dogfood, finish_meating } from './dogmove.js';
+import { obj_resists, dogfood, finish_meating,
+         could_reach_item } from './dogmove.js';
 import { MANFOOD, ACCFOOD } from './const.js';
 import { touch_artifact, has_magic_key, artifact_light } from './artifact.js';
 import { is_metallic, is_rustprone, AMULET_OF_STRANGULATION,
@@ -92,10 +93,10 @@ import { noteleport_level, tele_restrict, rloc, mnexto } from './teleport.js';
 import { wipe_engr_at, sticks } from './engrave.js';
 import { acurrstr } from './attrib.js';
 import {
-    m_at, MON_AT, place_monster, sobj_at, is_pool, is_lava, accessible,
+    m_at, MON_AT, place_monster, sobj_at, is_pool, accessible,
     closed_door, sengr_at
 } from './makemon.js';
-import { monsndx, is_flyer, is_floater, is_swimmer, passes_walls, haseyes,
+import { monsndx, is_flyer, is_floater, passes_walls, haseyes,
          perceives, can_teleport, is_undead, is_human, is_vampshifter,
          dmgtype, Resists_Elem } from './mondata.js';
 import { mfndpos, monnear, mon_allowflags, check_gear_next_turn,
@@ -174,11 +175,12 @@ import { yname } from './objnam.js';
 import { aggravate as aggravate_mm } from './potion.js';
 import { pline_mon, set_msg_xy } from './display.js';
 import { impossible_async } from './display.js';
+import { money_cnt } from './u_init.js';
 
 // ── small helpers (C ref: youprop.h / mondata.h / display.h macros) ──
 
 /* C ref: monst.h mon_offmap() */
-function mon_offmap(mon) {
+export function mon_offmap(mon) {
     return ((mon.mstate || 0)
             & (MON_DETACH | MON_MIGRATING | MON_LIMBO | MON_OFFMAP)) !== 0;
 }
@@ -632,9 +634,6 @@ async function distfleeck(mtmp, out) {
         out.scared = 0;
 }
 
-// C ref: priest.c in_your_sanctuary() -- ported in priest.js
-export { in_your_sanctuary };
-
 // ── C ref: monmove.c set_apparxy() ──
 export function set_apparxy(mtmp) {
     const u = game.u;
@@ -701,13 +700,6 @@ export function set_apparxy(mtmp) {
     mtmp.muy = my;
 }
 
-// C ref: invent.c money_cnt()
-function money_cnt(otmp) {
-    for (; otmp; otmp = otmp.nobj)
-        if (otmp.oclass === objects[GOLD_PIECE].oc_class && otmp.otyp === GOLD_PIECE)
-            return otmp.quan;
-    return 0;
-}
 // C ref: monmove.c can_ooze()
 function can_ooze(mtmp) {
     if (!amorphous(mtmp.data) || stuff_prevents_passage(mtmp))
@@ -1720,15 +1712,6 @@ function m_balks_at_approaching(oldappr, mtmp, pr) {
         return -1;
 
     return oldappr; /* leaves appr unchanged */
-}
-
-// ── C ref: dogmove.c could_reach_item() ──
-function could_reach_item(mon, nx, ny) {
-    if ((!is_pool(nx, ny) || is_swimmer(mon.data))
-        && (!is_lava(nx, ny) || likes_lava(mon.data))
-        && (!sobj_at(BOULDER, nx, ny) || throws_rocks(mon.data)))
-        return true;
-    return false;
 }
 
 const practical = [WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS, FOOD_CLASS];

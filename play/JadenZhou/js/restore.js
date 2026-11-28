@@ -50,7 +50,7 @@ import { init_oclass_probs } from './o_init.js';
 import { max_rank_sz } from './botl.js';
 import { adj_erinys } from './attrib.js';
 import { vision_reset } from './vision.js';
-import { docrt, pline, gbuf_keep } from './display.js';
+import { docrt, pline, gbuf_keep, reglyph_darkroom } from './display.js';
 import { tty_clear_nhwindow, tty_display_nhwindow, tty_putmsghistory } from './wintty.js';
 import { welcome } from './allmain.js';
 import { check_special_room } from './hack.js';
@@ -797,14 +797,6 @@ export async function dorecover(nhfp) {
     await welcome(false);
     await check_special_room(false);
     return 1;
-}
-
-// C ref: display.c reglyph_darkroom() -- remembered dark-room spots
-// change glyph when the dark_room option differs from when they were
-// remembered; the JS port remembers dark room spots as the dark-room
-// symbol only while flags.dark_room is set, which it leaves unchanged
-function reglyph_darkroom() {
-    /* nothing to convert: flags.dark_room comes from the save file */
 }
 
 

@@ -22,9 +22,9 @@ import { resists_poison, breathless, is_silent, has_head, is_human, likes_fire,
          resists_acid, eyecount } from './mondata.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnl, d, ROLL_FROM, rn2_on_display_rng } from './rng.js';
-import { swallowed, verbalize } from './display.js';
+import { swallowed, verbalize, see_objects, see_traps } from './display.js';
 import { pline, You, Your, You_feel, pline_The, newsym, see_monsters,
-         canseemon, canspotmon, map_invisible, flush_screen, vobj_at,
+         canseemon, canspotmon, map_invisible, flush_screen,
          glyph_at, glyph_is_invisible, unmap_object, tmp_at, DISP_ALWAYS,
          DISP_END } from './display.js';
 import { getobj, useup, obfree, hands_obj } from './invent.js';
@@ -459,23 +459,6 @@ function eatmupdate() {
     if (!game.eatmbuf || game.nomovemsg !== game.eatmbuf)
         return;
     throw new Error('eatmupdate(): mimicking an orange/gold not ported yet');
-}
-
-// C ref: display.c see_objects() -- redisplay every object location
-function see_objects() {
-    for (const obj of (game.level.objects || []).slice())
-        if (vobj_at(obj.ox, obj.oy) === obj)
-            newsym(obj.ox, obj.oy);
-    /* update_inventory(): no perm_invent */
-}
-
-// C ref: display.c see_traps() -- redisplay every seen trap
-function see_traps() {
-    for (const trap of (game.level.traps || []).slice()) {
-        const glyph = glyph_at(trap.tx, trap.ty);
-        if (glyph.kind === 'trap') /* glyph_is_trap(glyph) */
-            newsym(trap.tx, trap.ty);
-    }
 }
 
 // C ref: potion.c make_hallucinated()
@@ -1722,7 +1705,7 @@ export async function potionhit(mon, obj, how) {
         }
         case O.POT_SLEEPING:
             /* wakeup() doesn't rouse victims of temporary sleep */
-            if (sleep_monst(mon, rnd(12), POTION_CLASS)) {
+            if (await sleep_monst(mon, rnd(12), POTION_CLASS)) {
                 await pline(`${Monnam(mon)} falls asleep.`);
                 await slept_monst(mon);
             }

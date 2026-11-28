@@ -13,7 +13,8 @@ import { fracture_rock, break_statue } from './zap.js';
 import { rehumanize } from './polyself.js';
 import { hideunder_async } from './makemon.js';
 import { DEADMONSTER } from './mon.js';
-import { pay_for_damage as pay_for_damage_ex } from './shk.js';
+import { pay_for_damage as pay_for_damage_ex,
+         level_objects_top } from './shk.js';
 import { game } from './gstate.js';
 import { pline, You, pline_The, map_invisible, unmap_invisible, canspotmon,
          tmp_at, DISP_BEAM, DISP_CHANGE, DISP_END, explosion_to_glyph,
@@ -711,14 +712,6 @@ export async function explode(
     await wake_nearto(x, y, i);
 }
 
-
-/* C ref: display.h level.objects[x][y] -- the top object of the pile */
-function level_objects_top(x, y) {
-    for (const o of game.level?.objects || [])
-        if (o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR')
-            return o;
-    return null;
-}
 
 // C ref: explode.c scatter()
 /*

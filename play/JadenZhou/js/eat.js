@@ -108,8 +108,9 @@ import { paranoid_query, donull } from './cmd.js';
 import { tty_yn_function } from './wintty.js';
 import { safe_qbuf, encumber_msg, sellobj_state } from './pickup.js';
 import { SELL_NORMAL, SELL_DONTSELL } from './const.js';
-import { touch_artifact, retouch_equipment } from './artifact.js';
-import { retouch_object, wield_tool } from './wield.js';
+import { touch_artifact, retouch_equipment,
+         retouch_object } from './artifact.js';
+import { wield_tool } from './wield.js';
 
 import { COST_OPEN, GLIB, A_DEX } from './const.js';
 import { TIN_OPENER, DAGGER, SILVER_DAGGER, ELVEN_DAGGER, ORCISH_DAGGER,
@@ -117,7 +118,6 @@ import { TIN_OPENER, DAGGER, SILVER_DAGGER, ELVEN_DAGGER, ORCISH_DAGGER,
 import { observe_object } from './o_init.js';
 import { makeplural } from './objnam.js';
 import { acurrstr } from './attrib.js';
-import { costly_spot } from './insight.js';
 import {
     maybe_polyd, Sleep_resistance, Poison_resistance, Acid_resistance, Stone_resistance,
     Sick_resistance, Blind, Sick, Stoned, Strangled, Slimed, Hallucination, Hunger, Breathless,
@@ -140,6 +140,7 @@ import { canspotmon, canseemon } from './display.js';
 import { mindless, monsndx } from './mondata.js';
 import { AMAX, ATTRMIN } from './attrib.js';
 import { Lifesaved } from './youprop.js';
+import { costly_spot } from './shk.js';
 
 const invlet_basic = 52; /* C ref: invent.c */
 const MAX_EGG_HATCH_TIME = 200; /* C ref: obj.h */
@@ -161,7 +162,7 @@ export function vegetarian(ptr) {
         || (ptr.mlet === M.S_PUDDING && ptr !== mons[M.PM_BLACK_PUDDING]);
 }
 /* C ref: eat.c nonrotting_corpse() */
-function nonrotting_corpse(mnum) {
+export function nonrotting_corpse(mnum) {
     return mnum === M.PM_LIZARD || mnum === M.PM_LICHEN
         || is_rider(mons[mnum]) || mnum === M.PM_ACID_BLOB;
 }

@@ -8,7 +8,7 @@
 
 import { use_pole, could_pole_mon, use_whip, snuff_candle } from './apply.js';
 import { end_burn } from './timeout.js';
-import { get_obj_location } from './shk.js';
+import { get_obj_location, inside_shop } from './shk.js';
 import { shop_keeper, costly_spot, stolen_value, subfrombill, is_unpaid,
          contained_gold, donate_gold } from './shk.js';
 import { in_rooms } from './hack.js';
@@ -24,7 +24,7 @@ import { glyph_at, glyph_is_warning, You_hear as
 import { noit_mhim } from './mhitu.js';
 import { shade_miss } from './uhitm.js';
 import { switch_terrain } from './hack.js';
-import { dotrap, trapname } from './trap.js';
+import { dotrap, trapname, is_waterwall } from './trap.js';
 import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { is_art } from './artifact.js';
 import { game } from './gstate.js';
@@ -99,7 +99,7 @@ import { Is_waterlevel as Is_waterlevel_tg } from './const.js';
 import { AT_ENGL, AD_DGST } from './monsters.js';
 import { sellobj } from './shk.js';
 import { ghitm } from './dokick.js';
-import { weapon_descr, skill_name, inside_shop, body_part } from './insight.js';
+import { weapon_descr, skill_name, body_part } from './insight.js';
 import { xname, an, singular, The, Tobjnam } from './objnam.js';
 import { the, surface } from './iactions.js';
 import { doname, otense } from './objnam.js';
@@ -123,7 +123,7 @@ import { uprop } from './youprop.js';
 import { goodpos as goodpos_hu, m_at as m_at_hu,
          place_monster as place_monster_hu } from './makemon.js';
 import { MM_IGNOREWATER as MM_IGNOREWATER_HU, MM_IGNORELAVA as MM_IGNORELAVA_HU,
-         IS_WATERWALL as IS_WATERWALL_HU, HURTLING as HURTLING_HU,
+         HURTLING as HURTLING_HU,
          FORCEBUNGLE as FORCEBUNGLE_HU, W_ARMU as W_ARMU_HU, W_ARM as W_ARM_HU,
          W_ARMC as W_ARMC_HU, TT_WEB as TT_WEB_HU, TT_LAVA as TT_LAVA_HU,
          TT_INFLOOR as TT_INFLOOR_HU, TT_BURIEDBALL as TT_BURIEDBALL_HU
@@ -537,7 +537,7 @@ async function throw_gold(obj) {
         g.bhitpos = { x: u.ux, y: u.uy };
     } else {
         /* consistent with range for normal objects */
-        range = Math.trunc(acurrstr() / 2 - obj.owt / 40);
+        range = Math.trunc(acurrstr() / 2) - Math.trunc(obj.owt / 40);
 
         /* see if the gold has a place to move into */
         odx = u.ux + u.dx;
@@ -576,7 +576,7 @@ async function throw_gold(obj) {
 
 // C ref: dothrow.c throwing_weapon()
 /* return true for weapon meant to be thrown; excludes ammo */
-function throwing_weapon(obj) {
+export function throwing_weapon(obj) {
     const oc = objects[obj.otyp];
     return !!(is_missile(obj) || is_spear(obj)
               /* daggers and knife (excludes scalpel) */
@@ -1844,7 +1844,7 @@ function skiprange(range, skip) {
 }
 
 /* C ref: hack.h uslinging() */
-function uslinging() {
+export function uslinging() {
     return !!game.uwep && objects[game.uwep.otyp].oc_skill === P_SLING;
 }
 
@@ -2318,7 +2318,7 @@ export async function hurtle_step(arg, x, y) {
                                 || u.uprops?.[WWALKING_HT]?.extrinsic
                                 || game.hurtle_via_jumping)
                                && !Is_waterlevel_tg(u.uz));
-        if (is_waterwall_hu(x, y) || !(Levitation() || Flying_ht || Wwalking_ht)) {
+        if (is_waterwall(x, y) || !(Levitation() || Flying_ht || Wwalking_ht)) {
             /* couldn't move while hurtling; allow movement now so that
                drown() will give a chance to crawl out of pool and survive */
             game.multi = 0;
@@ -2376,11 +2376,6 @@ export function will_hurtle(mon, x, y) {
     return goodpos_hu(x, y, mon, MM_IGNOREWATER_HU | MM_IGNORELAVA_HU);
 }
 
-/* C ref: dbridge.c is_waterwall() */
-function is_waterwall_hu(x, y) {
-    return isok(x, y) && IS_WATERWALL_HU(game.level.at(x, y).typ);
-}
-
 // C ref: dothrow.c mhurtle_step()
 async function mhurtle_step(mon, x, y) {
     const u = game.u;
@@ -2402,7 +2397,7 @@ async function mhurtle_step(mon, x, y) {
         }
         /* flush_screen(1); nh_delay_output(): display timing only */
         set_apparxy_hu(mon);
-        if (is_waterwall_hu(x, y))
+        if (is_waterwall(x, y))
             return false;
         res = await mintrap_hu(mon, HURTLING_HU);
         if (res === Trap_Killed_Mon_HU

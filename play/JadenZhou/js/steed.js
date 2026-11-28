@@ -9,7 +9,7 @@ import { sokoban_guilt } from './trap.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { pline, You, You_cant } from './display.js';
-import { m_at, MON_AT, can_saddle, which_armor, accessible, sobj_at,
+import { m_at, MON_AT, can_saddle, accessible, sobj_at,
          place_monster, is_pool, is_lava } from './makemon.js';
 import { isok, dist2 } from './hacklib.js';
 import { near_capacity, test_move, end_running, xytodir } from './hack.js';
@@ -62,6 +62,7 @@ import { highc } from './hacklib.js';
 import { monverbself } from './do_name.js';
 import { newsym } from './display.js';
 import { m_unleash } from './apply.js';
+import { which_armor } from './worn.js';
 
 // C ref: cmd.c dirtocoord()
 export function dirtocoord(cc, dd) {

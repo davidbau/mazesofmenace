@@ -1689,11 +1689,9 @@ export function unmap_object(x, y) {
         /* turn remembered dark room squares dark */
         if (!lev.waslit && lev.remembered_glyph?.cmap === 'S_room'
             && lev.typ === ROOM)
-            lev.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false,
-                                     cmap: 'S_stone' };
+            lev.remembered_glyph = room_cmap_glyph(0); /* cmap_to_glyph(S_stone) */
     } else {
-        lev.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false,
-                                 cmap: 'S_stone' }; /* default val */
+        lev.remembered_glyph = room_cmap_glyph(0); /* cmap_to_glyph(S_stone): default val */
     }
 }
 
@@ -2469,8 +2467,7 @@ export function feel_location(x, y) {
             && (!lev.waslit || (game.flags.dark_room !== false
                                 && game.iflags.wc_color !== false))) {
             if (game.flags.dark_room === false)
-                lev.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false,
-                                         cmap: 'S_stone' };
+                lev.remembered_glyph = room_cmap_glyph(0); /* S_stone */
             else
                 lev.remembered_glyph = { ...lev.remembered_glyph,
                                          cmap: 'S_darkroom', cmapidx: 20 /* S_darkroom */ };
@@ -2509,6 +2506,45 @@ function room_cmap_glyph(idx) {
     const dec = dec_symset();
     return { ch: dec ? '~' : '.', color: NO_COLOR, decgfx: dec,
              cmap: idx === 20 ? 'S_darkroom' : 'S_room', cmapidx: idx };
+}
+
+// C ref: display.c reglyph_darkroom()
+/* the dark_room option, color, or the rogue level changes how remembered
+   out-of-sight floor and corridor spots are glyphed; called on arrival at
+   a level (before vision_reset(), so cansee() still holds the old view)
+   and after restoring a game */
+export function reglyph_darkroom() {
+    const dark_room = game.flags.dark_room !== false;
+    const use_color = game.iflags.wc_color !== false;
+
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const lev = game.level.at(x, y);
+            const gl = lev.remembered_glyph;
+
+            if (!dark_room) {
+                if (gl?.cmap === 'S_corr' && lev.waslit)
+                    lev.remembered_glyph = rememb_glyph(S_litcorr_g);
+            } else {
+                if (gl?.cmap === 'S_litcorr' && !cansee(x, y))
+                    lev.remembered_glyph = rememb_glyph(S_corr_g);
+            }
+
+            if (!dark_room || !use_color || Is_rogue_level(game.u.uz)) {
+                if (lev.remembered_glyph?.cmap === 'S_darkroom')
+                    lev.remembered_glyph = lev.waslit ? room_cmap_glyph(19) /* S_room */
+                                                      : GLYPH_NOTHING;
+            } else {
+                if (lev.remembered_glyph?.cmap === 'S_room' && lev.seenv
+                    && lev.waslit && !cansee(x, y))
+                    lev.remembered_glyph = darkroom_glyph(lev.remembered_glyph);
+                else if (lev.remembered_glyph?.nothing /* GLYPH_NOTHING */
+                         && lev.typ === ROOM && lev.seenv && !cansee(x, y))
+                    lev.remembered_glyph = darkroom_glyph(room_cmap_glyph(19));
+            }
+        }
+    /* gs.showsyms[S_darkroom] = showsyms[S_room] or the SYM_NOTHING blank:
+       darkroom_glyph() draws S_darkroom spots that way */
 }
 
 /* a terrain glyph in the remembered-glyph form (lev->glyph) */
@@ -2885,9 +2921,17 @@ function _statusLine1() {
     return `${title}${' '.repeat(gap)}${stats} ${align}`;
 }
 
-function _statusLine2() {
+// timeonly: botl.c stat_update_time() -- only BL_TIME is re-evaluated; the
+// tty status window renders every other field from the values it was given
+// by the previous bot() (game.tty_st2_fields).
+function _statusLine2(timeonly = false) {
     const u = game.u;
     if (!u) return '';
+    if (timeonly && game.tty_st2_fields) {
+        const f = game.tty_st2_fields;
+        const tmmv = game.flags?.time ? ` T:${game.moves}` : '';
+        return make_things_fit(f.leveldesc, `${f.midpre}${tmmv}${f.hunger}`, f.conds);
+    }
     /* C ref: botl.c do_statusline2(): experience is "Xp:N/pts" only with
        the showexp option, and the turn counter is shown only with time */
     const Upolyd = (u.umonnum !== u.umonster);
@@ -2911,7 +2955,8 @@ function _statusLine2() {
        symset */
     const goldsym = (game.currentgraphics === ROGUESET) ? '*' : '$';
     /* BL_GOLD .. BL_HUNGER: the fields between BL_LEVELDESC and BL_CAP */
-    const mid = ` ${goldsym}:${Math.min(money_cnt(game.invent), 999999)} HP:${hpval}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}${hunger}`;
+    const midpre = ` ${goldsym}:${Math.min(money_cnt(game.invent), 999999)} HP:${hpval}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}`;
+    const mid = `${midpre}${tmmv}${hunger}`;
     /* BL_CAP: botl.c sends it to the window port only when its value
        changed since the previous bot(); tty_status_update() then stores
        " %s" (a lone blank suppressed), resets enc_shrinklvl and takes
@@ -2922,7 +2967,9 @@ function _statusLine2() {
         game.tty_capval = (cap > UNENCUMBERED) ? ` ${STAT_ENC[cap]}` : '';
         game.tty_enc_shrinklvl = 0;
     }
-    return make_things_fit(leveldesc, mid, status_conditions());
+    const conds = status_conditions();
+    game.tty_st2_fields = { leveldesc, midpre, hunger, conds };
+    return make_things_fit(leveldesc, mid, conds);
 }
 
 /* C ref: wintty.c encvals[][] -- BL_CAP text for enc_shrinklvl 0..2 */
@@ -3484,9 +3531,19 @@ export function bot() {
        have a menu or prompt up */
     if (game.bot_disabled)
         return;
+    render_status(false);
+    game.disp_botl = game.disp_botlx = game.disp_time_botl = false;
+}
+
+// Compose the two status rows and draw them on rows 22-23.  With timeonly
+// (botl.c stat_update_time()), row 1 keeps what the previous bot() put
+// there and row 2 re-evaluates only the time field.
+function render_status(timeonly) {
     const display = game?.nhDisplay;
     if (game.u && game.u.uhp !== -1) {
-        const st1 = _statusLine1(), st2 = _statusLine2();
+        const st1 = (timeonly && game._status_lines) ? game._status_lines[0]
+                                                     : _statusLine1();
+        const st2 = _statusLine2(timeonly && !!game._status_lines);
         game._status_lines = [st1, st2];
         game.status_shown = true;
         if (display?.grid) {
@@ -3500,19 +3557,18 @@ export function bot() {
             }
         }
     }
-    game.disp_botl = game.disp_botlx = game.disp_time_botl = false;
 }
 
 // C ref: botl.c timebot() -- special purpose status update: move counter
-// ('time' status) only.  tty's windowport stat_update_time() redraws the
-// status line with only the time field re-evaluated; bot() recomposes
-// every field from current state (C's "old status display" path).
+// ('time' status) only.  The tty status is VIA_WINDOWPORT(), so this is
+// botl.c stat_update_time(): BL_TIME is re-evaluated and the other fields
+// keep the values the previous bot() sent (they change on the next bot()).
 export function timebot() {
     if (game.bot_disabled)
         return;
     /* iflags.status_updates is always on; suppress_map_output() */
     if (game.flags?.time && !game.in_mklev && game.u?.ux)
-        bot();
+        render_status(true); /* stat_update_time() */
     game.disp_time_botl = false;
 }
 

@@ -20210,12 +20210,33 @@ async function read_getlin(prompt) {
                  * (topl.c:123-139), so a wrapped query pages "--More--" right
                  * after the echoed buffer (df-x15c4d9378c step 75). */
                 const pw = (g.iflags?.prevmsg_window || 's')[0];
-                if (pw === 'c' && !doprev
-                    && await tty_getlin_combo_wrapped_window(`${prompt} ${buf}`)) {
-                    doprev = true;
+                if (pw === 'c') {
+                    const live = `${prompt} ${buf}`;
+                    const echo = g._topl_prompt_echo, written = g._topl_prompt_written;
+                    g._topl_prompt_echo = false; // getline.c:107 inread = 0
+                    g._topl_prompt_written = undefined;
+                    g._getlin_toplines = live;
+                    try {
+                        if (!doprev) {
+                            await doprev_message(live);
+                            await doprev_message(live);
+                            if (g.nhDisplay && !g._prevmsg_window_shown)
+                                topl_park_cursor(g.nhDisplay, g._topl_history_recall || '');
+                            doprev = true;
+                            continue;
+                        }
+                        await doprev_message(live);
+                    } finally {
+                        g._getlin_toplines = null;
+                        g._topl_prompt_echo = echo;
+                        g._topl_prompt_written = written;
+                    }
+                    g._prevmsg_combo = 0; // getline.c:126 maxcol = maxrow
+                    doprev = false;
+                    await paint(true);
                     continue;
                 }
-                if (pw === 's' || (pw === 'c' && !doprev)) {
+                if (pw === 's') {
                     const h = g._msg_history || [];
                     const hist = h;
                     const ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20),

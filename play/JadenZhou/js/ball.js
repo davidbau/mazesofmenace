@@ -17,10 +17,10 @@ import { Is_waterlevel, BLINDED, LEVITATION, IS_OBSTRUCTED, IS_DOOR,
          D_CLOSED, D_LOCKED, POOL, SLT_ENCUMBER, HMON_DRAGGED, HEAD, LEG,
          NO_KILLER_PREFIX, KILLED_BY, KILLED_BY_AN, A_STR,
          TT_INFLOOR, TT_BURIEDBALL, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP,
-         LEFT_SIDE, RIGHT_SIDE } from './const.js';
+         LEFT_SIDE, RIGHT_SIDE, is_hole, is_pit } from './const.js';
 import { dist2, distmin } from './hacklib.js';
 import { m_at, is_pool } from './makemon.js';
-import { t_at, is_pit, is_hole, deltrap, losehp, Maybe_Half_Phys,
+import { t_at, deltrap, losehp, Maybe_Half_Phys,
          set_wounded_legs, reset_utrap } from './trap.js';
 import { near_capacity, weight_cap, nomul, spoteffects, movobj } from './hack.js';
 import { find_mac, setnotworn } from './worn.js';

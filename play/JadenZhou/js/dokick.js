@@ -9,7 +9,7 @@
 
 import { find_drawbridge } from './zap.js';
 import { scatter } from './explode.js';
-import { VIS_EFFECTS, MAY_HIT } from './const.js';
+import { VIS_EFFECTS, MAY_HIT, M_AP_TYPE } from './const.js';
 import { ROLL_FROM } from './rng.js';
 import { DEADMONSTER } from './mon.js';
 import { game } from './gstate.js';
@@ -68,7 +68,7 @@ import { breakchestlock } from './lock.js';
 import { addtobill, add_damage, pay_for_damage } from './shk.js';
 import { SHOP_DOOR_COST } from './const.js';
 import { flooreffects, impact_disturbs_zombies } from './do.js';
-import { place_object } from './mkobj.js';
+import { place_object, level_objects_at } from './mkobj.js';
 import { stackobj } from './invent.js';
 import { attack_checks } from './uhitm.js';
 import { overexertion } from './hack.js';
@@ -82,7 +82,7 @@ import { M2_GREEDY, M2_MERC, S_MIMIC } from './monsters.js';
 import { M_AP_NOTHING } from './const.js';
 import { M1_THICK_HIDE, MZ_LARGE, M1_NOHANDS, PM_SHADE, AT_KICK,
          S_EEL } from './monsters.js';
-import { M_AP_TYPMASK, M_AP_MONSTER, W_ARMF, P_NONE, P_MARTIAL_ARTS,
+import { M_AP_MONSTER, W_ARMF, P_NONE, P_MARTIAL_ARTS,
          NO_TRAP_FLAGS, engulfing_u } from './const.js';
 import { special_dmgval, use_skill, martial_bonus } from './weapon.js';
 import { seemimic, killed } from './mon.js';
@@ -802,8 +802,6 @@ export async function ghitm(mtmp, gold) {
 
 const kick_passes_thru = "kick passes harmlessly through";
 
-function M_AP_TYPE(mon) { return (mon.m_ap_type || 0) & M_AP_TYPMASK; }
-
 // C ref: dokick.c kickdmg()
 /* kicking damage when not poly'd into a form with a kick attack */
 async function kickdmg(mon, clumsy) {
@@ -1361,10 +1359,7 @@ async function kick_object(x, y, kickobjnam) {
 
 /* C ref: display.h level.objects[x][y] -- the top object of the pile */
 function objects_at_top(x, y) {
-    for (const o of game.level?.objects || [])
-        if (o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR')
-            return o;
-    return null;
+    return level_objects_at(x, y)[0] || null;
 }
 
 // C ref: dokick.c really_kick_object() -- guts of kick_object
@@ -1728,8 +1723,7 @@ export async function impact_drop(
     isrock = (missile && missile.otyp === ROCK_DK);
     oct = dct = 0;
     /* svl.level.objects[x][y] via ->nexthere, top first */
-    const pile = game.level.objects.filter(o => o.ox === x && o.oy === y
-                                                && o.where === 'OBJ_FLOOR');
+    const pile = level_objects_at(x, y);
     for (const obj of pile) {
         if (obj === missile)
             continue;

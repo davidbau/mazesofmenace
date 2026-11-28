@@ -47,8 +47,7 @@ import { PM_GHOST, PM_DEATH, PM_FAMINE, PM_PESTILENCE, M2_MINION }
     from './monsters.js';
 import { canseemon, You } from './display.js';
 import { Monnam } from './do_name.js';
-import { body_part } from './insight.js';
-import { record_achievement } from './do.js';
+import { body_part, record_achievement } from './insight.js';
 import { ACH_TMPL } from './const.js';
 import { Invis, Displaced, Conflict, Deaf, Hallucination } from './youprop.js';
 import { AM_MASK } from './const.js';

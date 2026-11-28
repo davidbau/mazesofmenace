@@ -33,6 +33,7 @@ import {
     TOWN, HELLISH, MAZELIKE, ROGUELIKE, UNCONNECTED, D_ALIGN_MASK,
     D_ALIGN_NONE, D_ALIGN_CHAOTIC, D_ALIGN_NEUTRAL, D_ALIGN_LAWFUL, Align2amask,
     In_endgame, NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
+    Is_knox_level,
 } from './const.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import {
@@ -1171,6 +1172,15 @@ export function In_hell(lev) {
     return game.dungeons[lev.dnum].flags.hellish ? true : false;
 }
 
+// C ref: dungeon.c single_level_branch()
+export function single_level_branch(lev) {
+    /*
+     * TODO:  this should be generalized instead of assuming that
+     * Fort Ludios is the only single level branch in the dungeon.
+     */
+    return Is_knox_level(lev);
+}
+
 // C ref: dungeon.c assign_level()
 /* equivalent to dest = source */
 export function assign_level(dest, src) {
@@ -1547,7 +1557,7 @@ export async function print_dungeon(bymenu) {
         else if (Is_earthlevel(game.u.uz) || Is_waterlevel(game.u.uz)
                  || Is_firelevel(game.u.uz) || Is_airlevel(game.u.uz)
                  || Is_qstart(game.u.uz) || at_dgn_entrance("The Quest")
-                 || Is_knox(game.u.uz))
+                 || Is_knox_level(game.u.uz))
             buf = "No portal found.";
 
         /* only give output if we found a portal or expected one and didn't */
@@ -1581,8 +1591,7 @@ function Msa2amask(x) { return (x === 3) ? 4 : x; }
 /* C ref: dungeon.h In_tutorial(), Is_valley(), Is_bigroom() */
 function In_tutorial(x) { return x.dnum === game.dungeon_topology.d_tutorial_dnum; }
 function Is_valley(x) { return Lcheck(x, game.dungeon_topology.d_valley_level); }
-function Is_bigroom(x) { return Lcheck(x, game.dungeon_topology.d_bigroom_level); }
-function Is_knox(x) { return Lcheck(x, game.dungeon_topology.d_knox_level); }
+export function Is_bigroom(x) { return Lcheck(x, game.dungeon_topology.d_bigroom_level); }
 /* C ref: dungeon.h Lcheck() -- Lassigned(z) && on_level(x, z) */
 function Lcheck(x, z) {
     return !!(z && (z.dlevel || z.dnum) && on_level(x, z));
@@ -2029,7 +2038,7 @@ function count_feat_lastseentyp(
          *  the adjacent DBWALL has been seen.
          */
     case DOOR:
-        if (Is_knox(u.uz)) {
+        if (Is_knox_level(u.uz)) {
             let ty;
             const tx = x - 4;
 

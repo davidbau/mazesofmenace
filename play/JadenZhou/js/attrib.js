@@ -54,6 +54,7 @@ import { encumber_msg } from './pickup.js';
 import { TOWEL } from './objects.js';
 import { Fixed_abil, Unaware, Half_gas_damage } from './youprop.js';
 import { Role_if } from './const.js';
+import { shieldeff } from './display.js';
 
 // C ref: attrib.h ABASE(), ABON(), AMAX(), ATEMP()
 export function ABASE(x) { return game.u.acurr.a[x]; }
@@ -684,7 +685,7 @@ export async function poisoned(
             reason} ${plural ? "were" : "was"} poisoned!`);
     }
     if (u.uprops[POISON_RES].intrinsic || u.uprops[POISON_RES].extrinsic) {
-        /* if (blast) shieldeff(u.ux, u.uy): transient display only */
+        if (blast) await shieldeff(game.u.ux, game.u.uy);
         await pline("The poison doesn't seem to affect you."); /* pline_The() */
         return;
     }

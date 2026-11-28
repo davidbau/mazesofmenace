@@ -887,7 +887,7 @@ export const SET_LIT_RANDOM = -1;
 export const SET_LIT_NOCHANGE = -2;
 
 // C ref: rm.h CAN_OVERWRITE_TERRAIN()
-function CAN_OVERWRITE_TERRAIN(ttyp) {
+export function CAN_OVERWRITE_TERRAIN(ttyp) {
     return (game.iflags?.debug_overwrite_stairs || !(ttyp === LADDER || ttyp === STAIRS));
 }
 

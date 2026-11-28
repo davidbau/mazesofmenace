@@ -104,6 +104,8 @@ import { ROCK_CLASS as ROCK_CLASS_DT, SCROLL_CLASS as SCROLL_CLASS_DT,
 import { u_at as u_at_dt, M_AP_TYPE as M_AP_TYPE_DT, M_AP_OBJECT as M_AP_OBJECT_DT,
          MCORPSENM as MCORPSENM_DT } from './const.js';
 import { PM_TENGU as PM_TENGU_DT } from './monsters.js';
+import { level_objects_at } from './mkobj.js';
+import { findgold } from './steal.js';
 
 // C ref: lock.c cvt_sdoor_to_door()
 export function cvt_sdoor_to_door(lev) {
@@ -496,7 +498,8 @@ export async function reveal_terrain(which_subset) {
         /* default_sym = arboreal ? S_tree : S_stone */
         if (game.level.flags.arboreal)
             throw new Error('reveal_terrain(): arboreal default glyph not ported yet');
-        const default_glyph = { ch: ' ', color: NO_COLOR, decgfx: false, cmap: 'S_stone' };
+        const default_glyph = { ch: ' ', color: NO_COLOR, decgfx: false, cmap: 'S_stone',
+                                cmapidx: 0 /* S_stone */ };
 
         if (unconstrain_map())
             await docrt();
@@ -638,8 +641,7 @@ function glyph_is_object_dt(glyph) { return !!glyph && g_kind(glyph) === 'obj'; 
 
 /* C ref: level.objects[x][y] -- the floor objects at a spot */
 function objects_at_dt(x, y) {
-    return (game.level.objects || []).filter(o => o.ox === x && o.oy === y
-                                               && o.where === 'OBJ_FLOOR');
+    return level_objects_at(x, y);
 }
 
 // C ref: detect.c check_map_spot()
@@ -728,7 +730,7 @@ export async function gold_detect(sobj) {
     for (mtmp = g.fmon; mtmp && !outgoldmap; mtmp = mtmp.nmon) {
         if (DEADMONSTER_dt(mtmp) || (mtmp.isgd && !mtmp.mx))
             continue;
-        if (findgold_dt(mtmp.minvent) || mtmp.data === mons_dt[PM_GOLD_GOLEM_DT]) {
+        if (findgold(mtmp.minvent) || mtmp.data === mons_dt[PM_GOLD_GOLEM_DT]) {
             if (mtmp === u.usteed) {
                 steedgold = true;
             } else {
@@ -821,7 +823,7 @@ export async function gold_detect(sobj) {
         if (DEADMONSTER_dt(mtmp) || (mtmp.isgd && !mtmp.mx))
             continue;
         temp = null;
-        if (findgold_dt(mtmp.minvent) || mtmp.data === mons_dt[PM_GOLD_GOLEM_DT]) {
+        if (findgold(mtmp.minvent) || mtmp.data === mons_dt[PM_GOLD_GOLEM_DT]) {
             /* gold = cg.zeroobj; ensure oextra is cleared too */
             const gold = { otyp: GOLD_PIECE_DT, oclass: 0, dknown: 0 };
             gold.quan = rnd(10); /* usually more than 1 */
@@ -857,14 +859,6 @@ export async function gold_detect(sobj) {
 
     await map_redisplay();
     return 0;
-}
-
-/* C ref: invent.c findgold() -- for a linked (nobj) object chain */
-function findgold_dt(chain) {
-    for (const o of objchain_dt(chain))
-        if (o.otyp === GOLD_PIECE_DT)
-            return o;
-    return null;
 }
 
 /* C ref: fobj -- the floor objects, newest first */
@@ -1090,7 +1084,7 @@ export async function object_detect(detector, /* object doing the detecting */
         }
         if ((is_cursed && M_AP_TYPE_DT(mtmp) === M_AP_OBJECT_DT
              && (!oclass || oclass === objects_dt[mtmp.mappearance].oc_class))
-            || (findgold_dt(mtmp.minvent) && (!oclass || oclass === COIN_CLASS_DT))) {
+            || (findgold(mtmp.minvent) && (!oclass || oclass === COIN_CLASS_DT))) {
             ct++;
             break;
         }
@@ -1176,7 +1170,7 @@ export async function object_detect(detector, /* object doing the detecting */
                           ? MCORPSENM_DT(mtmp) : PM_TENGU_DT,
             };
             map_object(temp, 1);
-        } else if (findgold_dt(mtmp.minvent)
+        } else if (findgold(mtmp.minvent)
                    && (!oclass || oclass === COIN_CLASS_DT)) {
             /* gold = cg.zeroobj; ensure oextra is cleared too */
             const gold = { otyp: GOLD_PIECE_DT, oclass: 0, dknown: 0 };

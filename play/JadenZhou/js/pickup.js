@@ -7,7 +7,7 @@
 
 import { impossible } from './hack.js';
 import { FUMBLING, TIMEOUT, DRAWBRIDGE_UP, ICE, STONE, IS_POOL, IS_LAVA,
-         IS_FURNITURE, PLNMSG_BACK_ON_GROUND } from './const.js';
+         IS_FURNITURE, PLNMSG_BACK_ON_GROUND, is_pit } from './const.js';
 import { db_under_typ, lastseentyp_array } from './display.js';
 import { dfeature_at } from './invent.js';
 import { waterbody_name } from './pager.js';
@@ -50,7 +50,7 @@ import { unbless } from './mkobj.js';
 import { trycall } from './potion.js';
 import { useupf } from './invent.js';
 import { P_BOW, P_CROSSBOW, P_SPEAR, P_DAGGER, P_KNIFE } from './const.js';
-import { t_at, is_pit } from './trap.js';
+import { t_at } from './trap.js';
 import { can_reach_floor, cant_reach_floor } from './engrave.js';
 import { P_SKILL } from './weapon.js';
 import { P_RIDING, P_BASIC } from './const.js';
@@ -130,7 +130,8 @@ import { shop_keeper, sellobj, get_obj_location } from './shk.js';
 import { Norep, pline_The, bot, canspotmon } from './display.js';
 import { welded, setuwep, setuswapwep, setuqwep, weldmsg } from './wield.js';
 import { MZ_LARGE, PM_ICE_TROLL, PM_HOUSECAT } from './monsters.js';
-import { add_to_container, start_corpse_timeout, set_corpsenm, start_glob_timeout } from './mkobj.js';
+import { add_to_container, start_corpse_timeout, set_corpsenm, start_glob_timeout,
+         level_objects_at } from './mkobj.js';
 import { stop_timer, obj_to_any } from './timeout.js';
 import { ROT_CORPSE, REVIVE_MON, SHRINK_GLOB } from './const.js';
 import { makemon, set_malign } from './makemon.js';
@@ -2104,8 +2105,7 @@ export async function encumber_msg() {
 
 /* C ref: display.h level.objects[x][y] -- the pile at <x,y>, top first */
 function objects_at(x, y) {
-    return (game.level?.objects || []).filter(
-        o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR');
+    return level_objects_at(x, y);
 }
 
 // C ref: pickup.c container_at() -- is there a container at x,y;

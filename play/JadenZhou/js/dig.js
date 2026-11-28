@@ -7,7 +7,7 @@ import { in_town } from './hack.js';
 import { rnd, rn2 } from './rng.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { canseemon, newsym, pline, You_hear, You_feel } from './display.js';
-import { mksobj_at, place_object } from './mkobj.js';
+import { mksobj_at, place_object, level_objects_at } from './mkobj.js';
 import { acurr } from './attrib.js';
 import { start_timer, stop_timer, obj_to_any } from './timeout.js';
 import { TIMER_OBJECT, ROT_ORGANIC, CXN_NO_PFX, OBJ_AT, u_at } from './const.js';
@@ -80,7 +80,6 @@ import { delfloortrap as delfloortrap_dg,
 import { obj_ice_effects as obj_ice_effects_dg } from './mkobj.js';
 import { hliquid as hliquid_dg } from './potion.js';
 import { minliquid as minliquid_dg } from './mon.js';
-import { vobj_at as vobj_at_dg } from './display.js';
 import { STONE as STONE_DG } from './const.js';
 import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, N_DIRS_Z, TT_WEB, WEB, IRONBARS,
          IS_WATERWALL, LAVAWALL, KILLED_BY, DIR_ERR, DIR_180, FORCEBUNGLE,
@@ -254,8 +253,7 @@ export function bury_an_obj(otmp, dealloced) {
     if (otmp === game.uball)
         throw new Error('bury_an_obj: burying the iron ball is not ported yet');
     /* after unpunish(), or might get deallocated chain */
-    const pile = (game.level.objects || []).filter(
-        o => o.ox === otmp.ox && o.oy === otmp.oy);
+    const pile = level_objects_at(otmp.ox, otmp.oy);
     const otmp2 = pile[pile.indexOf(otmp) + 1] || null;
     /*
      * obj_resists(,0,0) prevents Rider corpses from being buried.
@@ -307,8 +305,7 @@ export async function bury_objs(x, y) {
                 && costly_spot(x, y));
 
     /* for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp2) */
-    for (otmp = (game.level.objects || []).find(
-             o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR') || null;
+    for (otmp = level_objects_at(x, y)[0] || null;
          otmp; otmp = otmp2) {
         if (costly && !game.context.mon_moving) {
             loss += await stolen_value(otmp, x, y, !!shkp.mpeaceful, true);
@@ -440,17 +437,9 @@ export function fillholetyp(x, y,
 }
 
 /* C ref: svl.level.objects[x][y] -- the pile at <x,y>, top first (the
-   ->nexthere chain); the JS floor chain is fobj, newest first, and
-   place_object() keeps a boulder on top of the pile */
+   ->nexthere chain) */
 function level_objects_at_dg(x, y) {
-    const pile = (game.level.objects || []).filter(
-        o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR');
-    const top = vobj_at_dg(x, y);
-    if (top && pile[0] !== top) {
-        pile.splice(pile.indexOf(top), 1);
-        pile.unshift(top);
-    }
-    return pile;
+    return level_objects_at(x, y);
 }
 
 // C ref: dig.c liquid_flow()
@@ -1019,7 +1008,7 @@ const BY_OBJECT = null;
 function SHOP_WALL_DMG() { return 10 * acurrstr(); }
 
 /* C ref: mondata.h grounded() */
-function grounded(ptr) {
+export function grounded(ptr) {
     return (!is_flyer(ptr) && !is_floater(ptr)
             && (!is_clinger(ptr) || !has_ceiling(game.u.uz)));
 }

@@ -20,7 +20,7 @@ import { getnow } from './calendar.js';
 import { lays_eggs, ugenocided, udeadinside } from './polyself.js';
 import { ordin, plur, strsubst } from './hacklib.js';
 import { spellid } from './spell.js';
-import { wizard } from './dungeon.js';
+import { wizard, Is_bigroom } from './dungeon.js';
 import { game } from './gstate.js';
 import { count_wsegs, wseg_at } from './worm.js';
 import {
@@ -48,7 +48,7 @@ import {
     REGENERATION, SLOW_DIGESTION, HALF_PHDAM, HALF_SPDAM, PROTECTION,
     PROT_FROM_SHAPE_CHANGERS, POLYMORPH, POLYMORPH_CONTROL, UNCHANGING, FAST,
     REFLECTING, FREE_ACTION, LIFESAVED, INTRINSIC, NO_SPELL, MALE, FEMALE,
-    NEUTRAL, ismnum,
+    NEUTRAL, ismnum, Is_rogue_level, Is_knox_level,
 } from './const.js';
 import {
     tty_create_nhwindow, tty_start_menu, add_menu_str, tty_end_menu,
@@ -63,7 +63,7 @@ import { PICK_ONE, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './const.
 import { NO_COLOR, ATR_NONE, ATR_INVERSE } from './terminal.js';
 import { def_monsyms_explain } from './drawing.js';
 import { upstart } from './hacklib.js';
-import { objects, OBJ_NAME, WEAPON_CLASS, GEM_CLASS, COIN_CLASS,
+import { objects, OBJ_NAME, WEAPON_CLASS, GEM_CLASS,
          GAUNTLETS_OF_POWER, DUNCE_CAP, SHIELD_OF_REFLECTION, TOWEL, CORPSE,
          TIN, EGG, STATUE, BOULDER, TIN_OPENER, ROCK, GRAPPLING_HOOK,
          DWARVISH_MATTOCK, LUCKSTONE, LOADSTONE, FLINT, TOUCHSTONE, DAGGER,
@@ -82,7 +82,7 @@ import { align_gname, u_gname, can_pray } from './pray.js';
 import { genders } from './role.js';
 import { newuexp } from './exper.js';
 import { night, midnight } from './calendar.js';
-import { depth, dunlev, on_level } from './dungeon.js';
+import { depth, dunlev } from './dungeon.js';
 import { endgamelevelname as endgamelevelname_in } from './dungeon.js';
 import { observable_depth as observable_depth_in } from './topten.js';
 import { find_ac, money_cnt } from './u_init.js';
@@ -140,8 +140,7 @@ import {
 } from './youprop.js';
 import { Upolyd, Role_if, Luck } from './const.js';
 import { mon_aligntyp } from './priest.js';
-export { costly_spot, shop_keeper, inhishop, inside_shop } from './shk.js';
-import { costly_spot } from './shk.js';
+import { costly_spot, contained_gold } from './shk.js';
 import { TT_BURIEDBALL as TT_BURIEDBALL_IS, TT_LAVA as TT_LAVA_IS,
          TT_INFLOOR as TT_INFLOOR_IS } from './const.js';
 import { hliquid as hliquid_is } from './potion.js';
@@ -412,20 +411,6 @@ export function mbodypart(mon, part) {
 // C ref: polyself.c body_part()
 export function body_part(part) {
     return mbodypart(game.youmonst, part);
-}
-
-// C ref: invent.c contained_gold()
-function contained_gold(obj, even_if_unknown) {
-    let value = 0;
-
-    /* objects other than coins won't have any gold inside them
-       (JS container contents are an array) */
-    for (const otmp of (Array.isArray(obj.cobj) ? obj.cobj : []))
-        if (otmp.oclass === COIN_CLASS)
-            value += otmp.quan;
-        else if (otmp.cobj && (otmp.cknown || even_if_unknown))
-            value += contained_gold(otmp, even_if_unknown);
-    return value;
 }
 
 // C ref: invent.c hidden_gold()
@@ -1096,7 +1081,7 @@ function background_enlightenment(unused_mode, final) {
         tmpbuf = endgamelevelname_in(egdepth);
         buf = `in the endgame, on the ${
                 tmpbuf.startsWith("Plane") ? "Elemental " : ""}${tmpbuf}`;
-    } else if (Is_knox(u.uz)) {
+    } else if (Is_knox_level(u.uz)) {
         /* this gives away the fact that the knox branch is only 1 level */
         buf = `on the ${game.dungeons[u.uz.dnum].dname} level`;
     } else {
@@ -1162,17 +1147,6 @@ function background_enlightenment(unused_mode, final) {
         you_have(buf, "");
     }
     /* SCORE_ON_BOTL: flags.showscore is not a recorder option */
-}
-
-/* C ref: dungeon.h Is_bigroom(), Is_rogue_level(), Is_knox() */
-function Is_bigroom(uz) {
-    return on_level(uz, game.dungeon_topology.d_bigroom_level);
-}
-function Is_rogue_level(uz) {
-    return on_level(uz, game.dungeon_topology.d_rogue_level);
-}
-function Is_knox(uz) {
-    return on_level(uz, game.dungeon_topology.d_knox_level);
 }
 
 // C ref: insight.c basics_enlightenment()

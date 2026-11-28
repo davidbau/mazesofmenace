@@ -24,7 +24,7 @@ import { update_mapseen_for } from './dungeon.js';
 import { container_at, doloot } from './pickup.js';
 import { set_occupation } from './allmain.js';
 import { mon_nam } from './do_name.js';
-import { doname, yname } from './objnam.js';
+import { doname, yname, simple_typename, An } from './objnam.js';
 import { can_reach_floor, cant_reach_floor } from './engrave.js';
 import { mons, PM_ORACLE, PM_ROGUE } from './monsters.js';
 import { ART_ORB_OF_DETECTION, ART_MASTER_KEY_OF_THIEVERY } from './artilist.js';
@@ -48,7 +48,6 @@ import { A_STR, A_DEX, A_CON, IS_DOOR, D_CLOSED, D_BROKEN, D_NODOOR,
 import { SKELETON_KEY, LOCK_PICK, CREDIT_CARD } from './objects.js';
 import { M1_NOHANDS, MZ_SMALL } from './monsters.js';
 import { canspotmon, map_invisible, feel_location, feel_newsym } from './display.js';
-import { obj_typename } from './objnam.js';
 import { ansimpleoname } from './iactions.js';
 import { hliquid } from './potion.js';
 import { is_pool, is_lava } from './makemon.js';
@@ -72,7 +71,7 @@ import { objects, ICE_BOX, CORPSE, LARGE_BOX, POTION_CLASS, WEAPON_CLASS,
 import { COST_BRKLCK, PASSES_WALLS, DBWALL, BLINDED, P_DAGGER, P_FLAIL,
          P_LANCE, P_SABER, P_PICK_AXE, isok } from './const.js';
 import { costly_alteration, obj_extract_self, start_corpse_timeout,
-         place_object } from './mkobj.js';
+         place_object, level_objects_at } from './mkobj.js';
 import { costly_spot, shop_keeper, add_damage, stolen_value } from './shk.js';
 import { the, surface } from './iactions.js';
 import { xname, singular, an } from './objnam.js';
@@ -552,21 +551,7 @@ function lk_Levitation() {
 
 /* C ref: display.h level.objects[x][y] -- the pile at <x,y>, top first */
 function lk_objects_at(x, y) {
-    return (game.level?.objects || []).filter(
-        o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR');
-}
-
-/* C ref: objnam.c simple_typename() -- obj_typename() without the
-   user-assigned name or the appended description */
-function simple_typename(otyp) {
-    const save_uname = objects[otyp].oc_uname;
-    objects[otyp].oc_uname = null; /* suppress any name given by user */
-    let bufp = obj_typename(otyp);
-    objects[otyp].oc_uname = save_uname;
-    const pp = bufp.indexOf(" (");
-    if (pp >= 0)
-        bufp = bufp.slice(0, pp); /* strip the appended description */
-    return bufp;
+    return level_objects_at(x, y);
 }
 
 /* lev->glyph comparison for the remembered-glyph objects JS keeps */
@@ -1191,10 +1176,8 @@ export async function doforce() {
 
     /* A lock is made only for the honest man, the thief will break it. */
     xl.box = null;
-    /* svl.level.objects[u.ux][u.uy] via ->nexthere: the floor chain
-       (fobj, newest first) filtered to the hero's spot */
-    const here = (game.level.objects || []).filter(
-        o => o.ox === u.ux && o.oy === u.uy && o.where === 'OBJ_FLOOR');
+    /* svl.level.objects[u.ux][u.uy] via ->nexthere */
+    const here = level_objects_at(u.ux, u.uy);
     for (const otmp of here)
         if (Is_box(otmp)) {
             if (otmp.obroken || !otmp.olocked) {
@@ -1379,8 +1362,3 @@ async function chest_shatter_msg(otmp) {
     await pline(`${An(thing)} ${disposition}!`);
 }
 
-/* C ref: objnam.c An() */
-function An(str) {
-    const s = an(str);
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}

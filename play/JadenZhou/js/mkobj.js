@@ -20,7 +20,8 @@ import { depth, level_difficulty, In_hell } from './dungeon.js';
 import * as O from './objects.js';
 import { objects, is_weptool, Is_mbag, Is_container, bimanual, is_rustprone,
          is_crackable, is_corrodeable } from './objects.js';
-import { P_NONE, P_SHURIKEN, P_BOW, FIRE_RES, G_GONE, G_GENOD } from './const.js';
+import { P_NONE, P_SHURIKEN, P_BOW, FIRE_RES, G_GONE, G_GENOD,
+         Is_rogue_level } from './const.js';
 import { rndmonst_adj } from './makemon.js';
 import { monsndx, little_to_big, big_to_little, is_human, verysmall, is_male,
          is_female, is_neuter, is_rider } from './mondata.js';
@@ -43,6 +44,7 @@ import { isok } from './hacklib.js';
 import { obj_no_longer_held } from './do.js';
 import { block_point, recalc_block_point } from './vision.js';
 import { vobj_at } from './display.js';
+import { g_at } from './vault.js';
 import { attach_egg_hatch_timeout, attach_fig_transform_timeout, start_timer, stop_timer, obj_stop_timers, obj_split_timers, obj_to_any } from './timeout.js';
 import { ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, HATCH_EGG, SHRINK_GLOB, FIG_TRANSFORM, TIMER_OBJECT, LS_OBJECT } from './const.js';
 import { tt_oname } from './topten.js';
@@ -54,14 +56,15 @@ import { confers_luck } from './timeout.js';
 import { set_moreluck } from './attrib.js';
 import { reset_remarm } from './do_wear.js';
 import { book_cursed_sync } from './spell.js';
-import { eaten_stat, tin_variety, tintxt_fodder, vegetarian } from './eat.js';
-import { costly_spot } from './insight.js';
+import { eaten_stat, tin_variety, tintxt_fodder, vegetarian,
+         nonrotting_corpse } from './eat.js';
 import { is_ice } from './dig.js';
 import { obj_sheds_light, obj_split_light_source, del_light_source } from './light.js';
 import { nartifact_exist, mk_artifact } from './artifact.js';
 import { A_NONE } from './const.js';
 import { splitbill, get_obj_location, unpaid_cost, subfrombill, shop_keeper,
-         addtobill, alter_cost } from './shk.js';
+         addtobill, alter_cost, oid_price_adjustment,
+         costly_spot } from './shk.js';
 import { COST_SINGLEOBJ } from './const.js';
 import { CONTAINED_TOO } from './const.js';
 import { arti_light_radius, obj_adjust_light_radius } from './light.js';
@@ -463,12 +466,6 @@ const hellprobs = [
     [4, AMULET_CLASS],
 ];
 
-// C ref: dungeon.h Is_rogue_level() — Lcheck(x, &rogue_level)
-function Is_rogue_level(lev) {
-    const z = game.dungeon_topology.d_rogue_level;
-    return !!((z.dlevel || z.dnum) && lev.dnum === z.dnum && lev.dlevel === z.dlevel);
-}
-
 // C ref: obj.h is_multigen()
 function is_multigen(otmp) {
     return (otmp.oclass === WEAPON_CLASS
@@ -601,20 +598,6 @@ export function next_ident() {
     if (!game.context.ident)
         game.context.ident = rnd(2) + 1; /* id 1 is reserved */
 
-    return res;
-}
-
-// C ref: shk.c oid_price_adjustment()
-/* used by nextoid() so that a split-off stack keeps the same price
-   adjustment as its parent */
-function oid_price_adjustment(obj, oid) {
-    let res = 0;
-    const otyp = obj.otyp;
-
-    if (!(obj.dknown && objects[otyp].oc_name_known)
-        && (obj.oclass !== O.GEM_CLASS || objects[otyp].oc_material !== O.GLASS)) {
-        res = ((oid % 4) === 0) ? 1 : 0; /* id%4 ==0 -> +1, ==1..3 -> 0 */
-    }
     return res;
 }
 
@@ -998,8 +981,9 @@ export function add_to_migration(obj) {
 }
 
 // C ref: mkobj.c place_object() -- the level's floor object chain (fobj)
-// is game.level.objects, newest first; per-square piles are read from it
-// in the same order (boulder-first pile ordering isn't ported yet).
+// is game.level.objects, newest first; each square's pile, with C's
+// "non-boulder object goes under boulders" order, is read from it by
+// level_objects_at().
 export function place_object(otmp, x, y) {
     const otmp2 = vobj_at(x, y); /* level.objects[x][y] */
 
@@ -1025,7 +1009,7 @@ const ROT_ICE_ADJUSTMENT = 2; /* rotting on ice takes 2 times as long */
  * Also used for starting ice effects too. [zap.c]
  */
 export function obj_ice_effects(x, y, do_buried) {
-    for (const otmp of vobj_pile(x, y)) {
+    for (const otmp of level_objects_at(x, y)) {
         if (otmp.timed)
             obj_timer_checks(otmp, x, y, 0);
     }
@@ -1039,9 +1023,25 @@ export function obj_ice_effects(x, y, do_buried) {
     }
 }
 
-/* the floor pile at <x,y>, top first (svl.level.objects[x][y] chain) */
-function vobj_pile(x, y) {
-    return (game.level.objects || []).filter(o => o.ox === x && o.oy === y);
+/* C ref: svl.level.objects[x][y] -- the floor pile at <x,y> along its
+   ->nexthere chain, top first.  JS keeps only the fobj chain
+   (game.level.objects, newest first).  C's place_object() puts a boulder
+   on top of the pile and any other object under the boulders already
+   there, while splitobj() and replace_object() keep the old object's
+   place in both chains (and restore.c find_lev_obj() rebuilds each pile
+   with place_object() in fobj order), so a C pile is always its boulders
+   followed by its other objects, each group in fobj order. */
+export function level_objects_at(x, y) {
+    const boulders = [], others = [];
+    for (const o of game.level?.objects || []) {
+        if (o.ox !== x || o.oy !== y || o.where !== 'OBJ_FLOOR')
+            continue;
+        if (o.otyp === O.BOULDER)
+            boulders.push(o);
+        else
+            others.push(o);
+    }
+    return boulders.length ? boulders.concat(others) : others;
 }
 
 // C ref: mkobj.c obj_timer_checks()
@@ -1589,14 +1589,6 @@ const HEALTHY_TIN = -3;
 // C ref: eat.c TTSZ == SIZE(tintxts); tintxts[] has 16 entries
 const TTSZ = 16;
 
-// C ref: eat.c nonrotting_corpse()
-function nonrotting_corpse(mnum) {
-    return mnum === M.PM_LIZARD || mnum === M.PM_LICHEN
-           || mnum === M.PM_DEATH || mnum === M.PM_FAMINE
-           || mnum === M.PM_PESTILENCE /* is_rider() */
-           || mnum === M.PM_ACID_BLOB;
-}
-
 // C ref: eat.c set_tin_variety()
 export function set_tin_variety(obj, forcetype) {
     let r;
@@ -2079,11 +2071,7 @@ export function obj_attach_mid(obj, mid) {
 
 // C ref: mkobj.c mkgold()
 export function mkgold(amount, x, y) {
-    /* g_at(x, y): floor objects are not tracked yet; mklev.js recorded
-       gold amounts per location in game.level.gold_at */
-    if (!game.level.gold_at) game.level.gold_at = new Map();
-    const key = `${x},${y}`;
-    let gold = game.level.gold_at.get(key) || null;
+    let gold = g_at(x, y);
 
     if (amount <= 0) {
         const mul = rnd(Math.trunc(30 / Math.max(12 - depth(game.u.uz), 2)));
@@ -2095,9 +2083,8 @@ export function mkgold(amount, x, y) {
     } else {
         gold = mksobj_at(O.GOLD_PIECE, x, y, true, false);
         gold.quan = amount;
-        game.level.gold_at.set(key, gold);
     }
-    gold.owt = objects[O.GOLD_PIECE].oc_weight; /* weight(gold) */
+    gold.owt = weight(gold);
     return gold;
 }
 

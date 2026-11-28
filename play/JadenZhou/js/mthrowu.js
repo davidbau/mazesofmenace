@@ -79,8 +79,7 @@ import { mswings_verb, mhim, mhis } from './mhitu.js';
 import { hit, miss, exclam, dobuzz } from './zap.js';
 import { hold_another_object } from './wizcmds.js';
 import { extract_from_minvent, extract_from_minvent_g } from './steal.js';
-import { body_part } from './insight.js';
-import { mbodypart } from './shk.js';
+import { body_part, mbodypart } from './insight.js';
 import { m_seenres } from './muse.js';
 import { spec_abon, artifact_hit } from './artifact.js';
 import {

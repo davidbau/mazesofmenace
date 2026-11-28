@@ -4225,13 +4225,22 @@ async function menu_remarm(retry) {
     const selected = new Set();
     const selCount = new Map();   /* selector -> curr.count (absent == -1) */
     let titleErased = false;
+    const styled = new Set();   /* rows set_item_state repainted */
     const paintedLines = () => {
         const painted = windowLines.slice();
-        for (const row of rows)
-            if (selected.has(row.selector))
-                painted[row.line] = painted[row.line].slice(0, 2)
-                                  + (selCount.has(row.selector) ? '#' : '+')
+        for (const row of rows) {
+            const mark = selected.has(row.selector)
+                ? (selCount.has(row.selector) ? '#' : '+') : '-';
+            /* wintty.c:1176-1192 set_item_state paints a toggled row's
+             * indicator with the item's attr/color, so a MENUCOLOR match
+             * colours it (\x01 = styled marker, coloratt.js menucolor_row). */
+            if (styled.has(row.selector)) {
+                const raw = windowLines[row.line].replace(/\x1b\[[0-9;]*m/g, '');
+                painted[row.line] = menucolor_row(`${raw.slice(0, 2)}\x01${mark}${raw.slice(3)}`);
+            } else if (mark !== '-')
+                painted[row.line] = painted[row.line].slice(0, 2) + mark
                                   + painted[row.line].slice(3);
+        }
         if (titleErased) painted[0] = '';
         return painted;
     };
@@ -4262,6 +4271,8 @@ async function menu_remarm(retry) {
                     if (bulk === 'select' || (bulk === 'invert' && !was)) selected.add(sel);
                     else selected.delete(sel);
                     selCount.delete(sel);
+                    /* only a changed entry is repainted (wintty.c:1198-1262) */
+                    if (was !== selected.has(sel)) styled.add(sel);
                 }
                 return;
             }
@@ -4275,14 +4286,18 @@ async function menu_remarm(retry) {
                  * the count, an unselected one takes it. */
                 if (selected.has(sel)) { selected.delete(sel); selCount.delete(sel); }
                 else { selected.add(sel); if (cnt > 0) selCount.set(sel, cnt); }
+                styled.add(sel);
                 return;
             }
             /* C wintty.c toggle_menu_curr(.., counting, count) */
+            /* toggle_menu_curr calls set_item_state on every change
+             * (wintty.c:1122-1147); counting with a zero count does nothing */
             if (selected.has(sel)) {
                 if (cnt > 0) selCount.set(sel, cnt);
                 else { selected.delete(sel); selCount.delete(sel); }
-            } else if (cnt > 0) { selCount.set(sel, cnt); selected.add(sel); }
-            else if (cnt === -1) selected.add(sel);
+                styled.add(sel);
+            } else if (cnt > 0) { selCount.set(sel, cnt); selected.add(sel); styled.add(sel); }
+            else if (cnt === -1) { selected.add(sel); styled.add(sel); }
         },
         /* C wintty.c:1700-1730 MENU_SEARCH — PICK_ANY, so it never finishes
          * early, and the getlin's clear_nhwindow(WIN_MESSAGE) blanks row 0. */
@@ -4294,6 +4309,7 @@ async function menu_remarm(retry) {
                 const selr = curr.r.selector;
                 if (selected.has(selr)) selected.delete(selr);
                 else selected.add(selr);
+                styled.add(selr);
             })
             .then((fin) => { titleErased = true; return fin; }));
     g._pending_message = '';

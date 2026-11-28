@@ -42,6 +42,7 @@ import {
     IS_FURNITURE, FOUNTAIN, SINK, POOL, THRONE, TREE,
     F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED,
     TREE_LOOTED, TREE_SWARM, MATCH_WALL, IS_STWALL, ACCESSIBLE, SCORR,
+    In_mines, Is_medusa_level, is_hole, is_pit,
 } from './const.js';
 import { splev_chr2typ, luaL_checkstring, check_mapchr, get_table_mapchr, get_table_mapchr_opt } from './nhlua.js';
 import { set_levltyp, set_levltyp_lit, SET_LIT_NOCHANGE } from './mkmaze.js';
@@ -57,10 +58,12 @@ import {
     luaL_checkoption, luaL_checkinteger, lua_type, LUA_TNIL, LUA_TSTRING,
     LUA_TBOOLEAN, LUA_TNUMBER, LUA_TFUNCTION, LUA_TTABLE, lua_error,
 } from './nhlua.js';
-import { create_room, topologize, add_door, add_room, add_subroom, okdoor, somex, somey, somexy, mktrap, fill_zoo } from './mklev.js';
+import { create_room, topologize, add_door, add_room, add_subroom, okdoor,
+         somex, somey, somexy, mktrap, fill_zoo,
+         count_level_features } from './mklev.js';
 import {
     mkgold, mkobj_at, mksobj_at, bless, curse, blessorcurse, set_corpsenm,
-    rndmonnum, weight, add_to_container,
+    rndmonnum, weight, add_to_container, unbless, uncurse,
 } from './mkobj.js';
 import {
     NON_PM, MALE, FEMALE, NEUTRAL, G_EXTINCT, G_GONE, LR_TELE, LR_UPTELE,
@@ -91,7 +94,7 @@ import {
     def_char_to_monclass, def_monsyms, def_char_to_objclass,
 } from './drawing.js';
 import { mkclass, makemon, set_malign, m_at, sobj_at, propagate } from './makemon.js';
-import { t_at } from './trap.js';
+import { t_at, undestroyable_trap } from './trap.js';
 import { create_gas_cloud_selection } from './region.js';
 import { enexto } from './teleport.js';
 import { strcmpi, strncmpi, strstri } from './hacklib.js';
@@ -113,7 +116,7 @@ import {
     get_level_extends, Can_dig_down, Can_fall_thru,
 } from './mklev.js';
 import { fixup_special, create_maze, walkfrom, pick_vibrasquare_location } from './mkmaze.js';
-import { deltrap, maketrap, is_pit, is_hole, trap_explanations } from './trap.js';
+import { deltrap, maketrap, trap_explanations } from './trap.js';
 import { defsyms_explanation } from './pager.js';
 import { mk_mplayer } from './mplayer.js';
 import { obj_extract_self } from './mkobj.js';
@@ -135,9 +138,6 @@ import { Protection_from_shape_changers } from './youprop.js';
 import { A_NONE as A_NONE_SP, A_LAWFUL as A_LAWFUL_SP } from './const.js';
 import { makeroguerooms } from './extralev.js';
 import { begin_burn } from './timeout.js';
-
-// C ref: dungeon.h In_mines()
-function In_mines(lev) { return lev.dnum === game.dungeon_topology.d_mines_dnum; }
 
 // C's impossible() and panic() (pline.c) are not ported yet.
 
@@ -2804,11 +2804,6 @@ export function get_table_objtype(tbl) {
     return ret;
 }
 
-// C ref: mkobj.c unbless(), uncurse() — the light-source and inventory
-// updates are not needed during level creation
-function unbless(otmp) { otmp.blessed = 0; }
-function uncurse(otmp) { otmp.cursed = 0; }
-
 // C ref: sp_lev.c create_object()
 function create_object(o, croom) {
     let otmp;
@@ -3047,13 +3042,6 @@ function create_object(o, croom) {
         }
     }
     return otmp;
-}
-
-// C ref: dungeon.h Is_medusa_level()
-function Is_medusa_level(lev) {
-    const z = game.dungeon_topology?.d_medusa_level;
-    return !!(z && (z.dlevel || z.dnum) && lev.dnum === z.dnum
-              && lev.dlevel === z.dlevel);
 }
 
 // C ref: sp_lev.c spo_pop_container()
@@ -3439,11 +3427,6 @@ function solidify_map() {
         for (let y = 0; y < ROWNO; y++)
             if (IS_STWALL(game.level.at(x, y).typ) && !SpLev_Map_at(x, y))
                 game.level.at(x, y).wall_info |= (W_NONDIGGABLE | W_NONPASSWALL);
-}
-
-// C ref: trap.c undestroyable_trap()
-function undestroyable_trap(ttyp) {
-    return (ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE);
 }
 
 // C ref: sp_lev.c map_cleanup()
@@ -4748,22 +4731,6 @@ export function lspo_levregion(tbl) {
 
     levregion_add(tmplregion);
     return 0;
-}
-
-// C ref: mklev.c count_level_features()
-function count_level_features() {
-    const flags = game.level.flags;
-
-    flags.nfountains = flags.nsinks = 0;
-    for (let y = 0; y < ROWNO; y++)
-        for (let x = 1; x < COLNO; x++) {
-            const typ = game.level.at(x, y).typ;
-
-            if (typ === FOUNTAIN)
-                flags.nfountains++;
-            else if (typ === SINK)
-                flags.nsinks++;
-        }
 }
 
 // C ref: sp_lev.c floodfillchk_match_accessible()

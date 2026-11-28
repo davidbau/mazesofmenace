@@ -10,11 +10,11 @@ import { begin_burn } from './timeout.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects, within_bounded_area } from './rect.js';
-import { depth as depth_of_level } from './hacklib.js';
 import { Is_branchlev, In_hell, level_difficulty, on_level, dungeon_branch,
          dunlev, dunlevs_in_dungeon, Is_special,
          at_dgn_entrance, insert_branch, is_wizard_mode,
-         induced_align, find_level, init_mapseen } from './dungeon.js';
+         induced_align, find_level, init_mapseen, single_level_branch,
+         depth } from './dungeon.js';
 import { makemaz, mazexy, mkportal } from './mkmaze.js';
 import { PM_LEPRECHAUN, PM_KILLER_BEE, PM_SOLDIER, PM_COCKATRICE, S_HUMAN,
          PM_SMALL_MIMIC, PM_LARGE_MIMIC, PM_GIANT_MIMIC, S_MIMIC,
@@ -48,7 +48,9 @@ import {
     BEEHIVE, MORGUE, ANTHOLE, BARRACKS, SWAMP, COCKNEST, DUST, MARK,
     TAINT_AGE, MM_NOGRP, NO_MM_FLAGS, MKTRAP_NOFLAGS, MKTRAP_SEEN,
     MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM, LA_UP, LA_DOWN,
-    BR_PORTAL, BR_NO_END1, BR_NO_END2,
+    BR_PORTAL, BR_NO_END1, BR_NO_END2, Is_botlevel, Is_stronghold, In_mines,
+    In_quest, In_V_tower, Is_oracle_level, Is_rogue_level, In_endgame,
+    Is_waterlevel, is_hole, is_pit,
 } from './const.js';
 import {
     SPBOOK_no_NOVEL, next_ident, blessorcurse, curse, mksobj, mksobj_at,
@@ -84,7 +86,7 @@ import {
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
     HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP,
     MAGIC_TRAP, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST,
-    BEAR_TRAP, is_hole, is_pit, maketrap, t_at, deltrap, undestroyable_trap,
+    BEAR_TRAP, maketrap, t_at, deltrap, undestroyable_trap,
 } from './trap.js';
 import { Blind, Hallucination, Flying, Levitation } from './youprop.js';
 import { Race_if, Upolyd, u_at, FOOT } from './const.js';
@@ -530,11 +532,11 @@ async function makelevel() {
         await makemaz(fillname);
     } else if (In_hell(g.u.uz)
                || (rn2(5) && g.u.uz.dnum === medusa.dnum
-                   && depth_of_level(g.u.uz) > depth_of_level(medusa))) {
+                   && depth(g.u.uz) > depth(medusa))) {
         await makemaz('');
     } else {
         /* otherwise, fall through - it's a "regular" level. */
-        const u_depth = depth_of_level(g.u.uz);
+        const u_depth = depth(g.u.uz);
 
         if (Is_rogue_level(g.u.uz)) {
             makeroguerooms();
@@ -591,7 +593,7 @@ async function makelevel() {
            note that mkroom doesn't guarantee a room gets created, and that
            this step only sets the room's rtype - it doesn't fill it yet. */
         /* (wizard && nh_getenv("SHOPTYPE")): the JS port has no environment */
-        if (u_depth > 1 && u_depth < depth_of_level(g.dungeon_topology.d_medusa_level)
+        if (u_depth > 1 && u_depth < depth(g.dungeon_topology.d_medusa_level)
             && g.level.nroom >= room_threshold && rn2(u_depth) < 3)
             await do_mkroom(SHOPBASE);
         else if (u_depth > 4 && !rn2(6))
@@ -737,8 +739,8 @@ function mk_knox_portal(x, y) {
 
     if (!(game.u.uz.dnum === game.dungeon_topology.d_oracle_level.dnum /* in main dungeon */
           && !at_dgn_entrance('The Quest')    /* but not Quest's entry */
-          && (u_depth = depth_of_level(game.u.uz)) > 10    /* beneath 10 */
-          && u_depth < depth_of_level(game.dungeon_topology.d_medusa_level))) /* and above Medusa */
+          && (u_depth = depth(game.u.uz)) > 10    /* beneath 10 */
+          && u_depth < depth(game.dungeon_topology.d_medusa_level))) /* and above Medusa */
         return;
 
     /* Adjust source to be current level and re-insert branch. */
@@ -1905,7 +1907,7 @@ function finddpos(cc, dir, aroom) {
 }
 
 function maybe_sdoor(chance) {
-    const d = depth_of_level(game.u?.uz);
+    const d = depth(game.u?.uz);
     return (d > 2) && !rn2(Math.max(2, chance));
 }
 
@@ -2391,17 +2393,6 @@ export function Can_dig_down(lev) {
             && !Invocation_lev(lev));
 }
 
-// C ref: dungeon.c Is_botlevel()
-function Is_botlevel(lev) {
-    return (lev.dlevel === game.dungeons[lev.dnum].num_dunlevs);
-}
-
-// C ref: dungeon.h Is_stronghold() macro — Lcheck(x, &stronghold_level)
-function Is_stronghold(lev) {
-    const z = game.dungeon_topology.d_stronghold_level;
-    return ((z.dlevel || z.dnum) && on_level(lev, z)) ? true : false;
-}
-
 // C ref: dungeon.c Invocation_lev()
 export function Invocation_lev(lev) {
     return (In_hell(lev)
@@ -2668,33 +2659,8 @@ export function wallification(x1, y1, x2, y2) {
 // Fill ordinary room
 // ============================================================
 
-// C ref: dungeon.h In_mines(), In_quest(), In_V_tower(), Is_oracle_level(),
-// Is_rogue_level(), In_endgame(), Inhell
-function In_mines(lev) {
-    return lev.dnum === game.dungeon_topology.d_mines_dnum;
-}
-function In_quest(lev) {
-    return lev.dnum === game.dungeon_topology.d_quest_dnum;
-}
-function In_V_tower(lev) {
-    return lev.dnum === game.dungeon_topology.d_tower_dnum;
-}
-function Is_oracle_level(lev) {
-    return on_level(lev, game.dungeon_topology.d_oracle_level);
-}
-function Is_rogue_level(lev) {
-    const z = game.dungeon_topology.d_rogue_level;
-    return !!((z.dlevel || z.dnum) && lev.dnum === z.dnum && lev.dlevel === z.dlevel);
-}
-function In_endgame(lev) {
-    return lev.dnum === game.dungeon_topology.d_astral_level.dnum;
-}
+// C ref: dungeon.h Inhell
 export function Inhell() { return In_hell(game.u.uz); }
-
-// C ref: dungeon.c single_level_branch()
-function single_level_branch(lev) {
-    return dunlevs_in_dungeon(lev) === 1;
-}
 
 // C ref: mklev.c mktrap_victim()
 /* generate a corpse and some items on top of a trap */
@@ -3162,7 +3128,7 @@ function fill_ordinary_room(croom, bonus_items) {
             mksink(croom);
         if (!rn2(60))
             mkaltar(croom);
-        x = 80 - (depth_of_level(g.u.uz) * 2);
+        x = 80 - (depth(g.u.uz) * 2);
         if (x < 2)
             x = 2;
         if (!rn2(x))
@@ -3256,7 +3222,7 @@ function fill_ordinary_room(croom, bonus_items) {
                     otmp = mkobj(oclass, false);
                     if (oclass === SPBOOK_no_NOVEL) {
                         let pass;
-                        const maxpass = (depth_of_level(g.u.uz) > 2) ? 2 : 3;
+                        const maxpass = (depth(g.u.uz) > 2) ? 2 : 3;
 
                         /* bias towards lower level by generating again
                            and taking the lower-level book; do that three
@@ -3294,7 +3260,7 @@ function fill_ordinary_room(croom, bonus_items) {
                       pos.x, pos.y, true, false);
 
         /* maybe make some graffiti */
-        if (!rn2(27 + 3 * Math.abs(depth_of_level(g.u.uz)))) {
+        if (!rn2(27 + 3 * Math.abs(depth(g.u.uz)))) {
             const pristinebuf = { s: '' };
             const mesg = random_engraving(pristinebuf);
 
@@ -3341,11 +3307,6 @@ function water_has_kelp(x, y, kelp_pool, kelp_moat) {
     return false;
 }
 
-// C ref: dungeon.h Is_waterlevel()
-function Is_waterlevel(lev) {
-    return on_level(lev, game.dungeon_topology.d_water_level);
-}
-
 // C ref: mklev.c mineralize()
 /*
  *      Place deposits of minerals (gold and misc gems) in the stone
@@ -3386,7 +3347,7 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob,
 
     /* basic level-related probabilities */
     if (goldprob < 0)
-        goldprob = 20 + Math.trunc(depth_of_level(g.u.uz) / 3);
+        goldprob = 20 + Math.trunc(depth(g.u.uz) / 3);
     if (gemprob < 0)
         gemprob = Math.trunc(goldprob / 4);
 

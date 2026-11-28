@@ -635,7 +635,7 @@ export function set_mon_data(mon, ptr) {
 }
 
 /* C ref: obj.h Is_dragon_scales(), Is_dragon_mail(), Is_dragon_armor() */
-function Is_dragon_armor(obj) {
+export function Is_dragon_armor(obj) {
     return (obj.otyp >= GRAY_DRAGON_SCALES && obj.otyp <= YELLOW_DRAGON_SCALES)
         || (obj.otyp >= GRAY_DRAGON_SCALE_MAIL
             && obj.otyp <= YELLOW_DRAGON_SCALE_MAIL);

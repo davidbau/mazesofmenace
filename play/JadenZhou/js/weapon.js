@@ -44,7 +44,7 @@ import { couldsee } from './vision.js';
 import { pline } from './display.js';
 import { canseemon } from './display.js';
 import { Monnam } from './do_name.js';
-import { doname } from './objnam.js';
+import { doname, distant_name } from './objnam.js';
 import { which_armor } from './worn.js';
 import { mon_hates_silver, mon_hates_blessings } from './mondata.js';
 import { ACURR } from './attrib.js';
@@ -79,7 +79,12 @@ import { arti_light_description } from './light.js';
 import { mbodypart } from './insight.js';
 import { HAND } from './const.js';
 import { m_carrying } from './mthrowu.js';
-import { pline_mon } from './display.js';
+import { pline_mon, newsym } from './display.js';
+import { obj_extract_self, place_object } from './mkobj.js';
+import { flooreffects } from './do.js';
+import { bypass_obj } from './worn.js';
+import { stackobj } from './invent.js';
+import { will_weld } from './wield.js';
 
 function weapon_skills() {
     const u = game.u;
@@ -229,16 +234,6 @@ function set_propellor(p) { game.propellor = p; }
 /* mondata.h */
 function is_wooden(ptr) { return ptr === M.mons[M.PM_WOOD_GOLEM]; }
 function hates_light(ptr) { return ptr === M.mons[M.PM_GREMLIN]; }
-
-/* obj.h */
-/* C ref: wield.c erodeable_wep(), will_weld() */
-function erodeable_wep(optr) {
-    return optr.oclass === WEAPON_CLASS || is_weptool(optr)
-        || optr.otyp === O.HEAVY_IRON_BALL || optr.otyp === O.IRON_CHAIN;
-}
-function will_weld(optr) {
-    return !!optr.cursed && (erodeable_wep(optr) || optr.otyp === O.TIN_OPENER);
-}
 
 /* targets that provide attacker with small to-hit bonus when using a spear */
 const kebabable = [M.S_XORN, M.S_DRAGON, M.S_JABBERWOCK, M.S_NAGA, M.S_GIANT];
@@ -868,10 +863,20 @@ export async function possibly_unwield(mon, polyspot) {
     if (!attacktype(mon.data, M.AT_WEAP)) {
         setmnotwielded(mon, mw_tmp);
         mon.weapon_check = NO_WEAPON_WANTED;
-        void polyspot;
-        /* "%s drops %s.", obj_extract_self(), flooreffects(),
-           bypass_obj(), place_object() and stackobj() */
-        throw new Error('possibly_unwield(): dropping the weapon not ported yet');
+        /* if we're going to call distant_name(), do so before extract_self */
+        if (cansee(mon.mx, mon.my)) {
+            await pline_mon(mon, `${Monnam(mon)} drops ${distant_name(obj, doname)}.`);
+            newsym(mon.mx, mon.my);
+        }
+        obj_extract_self(obj);
+        /* might be dropping object into water or lava */
+        if (!await flooreffects(obj, mon.mx, mon.my, "drop")) {
+            if (polyspot)
+                bypass_obj(obj);
+            place_object(obj, mon.mx, mon.my);
+            stackobj(obj);
+        }
+        return;
     }
     /* The remaining case where there is a change is where a monster
      * is polymorphed into a stronger/weaker monster with a different

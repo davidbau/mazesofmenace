@@ -38,7 +38,9 @@ import { max_rank_sz } from './botl.js';
 import { assigninvlet, reorder_invent, merged, addinv } from './invent.js';
 import { Japanese_item_name } from './objnam.js';
 import { setworn } from './worn.js';
+import { setuwep, setuqwep, setuswapwep } from './wield.js';
 import { ARM_BONUS } from './hacklib.js';
+import { hidden_gold } from './insight.js';
 
 /* C ref: spell.h SPELL_LEV_PW() */
 function SPELL_LEV_PW(lvl) { return (lvl) * 5; }
@@ -1239,14 +1241,6 @@ async function ini_inv(trops) {
     }
 }
 
-// C ref: invent.c hidden_gold()
-/* the hero's starting inventory never holds a container with gold */
-function hidden_gold(even_if_unknown) {
-    void even_if_unknown;
-    return 0;
-}
-
-
 // C ref: u_init.c u_init_carry_attr_boost()
 /* boost STR and CON until hero can carry inventory */
 async function u_init_carry_attr_boost() {
@@ -1297,11 +1291,6 @@ export function money_cnt(otmp) {
             return otmp.quan;
     return 0;
 }
-
-// C ref: wield.c setuwep(), setuqwep(), setuswapwep() -- slot only
-function setuwep(obj) { game.uwep = obj; obj.owornmask = (obj.owornmask || 0) | K.W_WEP; }
-function setuqwep(obj) { game.uquiver = obj; obj.owornmask = (obj.owornmask || 0) | K.W_QUIVER; }
-function setuswapwep(obj) { game.uswapwep = obj; obj.owornmask = (obj.owornmask || 0) | K.W_SWAPWEP; }
 
 // C ref: u_init.c ini_inv_use_obj()
 /* initial inventory: wear, wield, learn the spell/obj */

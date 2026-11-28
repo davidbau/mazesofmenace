@@ -125,14 +125,6 @@ export function strcmpi(a, b) {
     return strncmpi(a, b, -1);
 }
 
-export function depth(uz) {
-    const dnum = uz?.dnum ?? 0;
-    const dlevel = uz?.dlevel ?? 1;
-    const dungeon = game?.dungeons?.[dnum];
-    if (!dungeon) return dlevel;
-    return (dungeon.depth_start || 1) + dlevel - 1;
-}
-
 // C ref: hacklib.c ing_suffix() -- return the "ing" form of a verb
 export function ing_suffix(s) {
     const vowel = "aeiouwy";

@@ -9,7 +9,7 @@ import { helpless } from './monmove.js';
 import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import { livelog_printf, verbalize } from './display.js';
-import { LL_ACHIEVE } from './const.js';
+import { LL_ACHIEVE, Is_qstart } from './const.js';
 import { noit_mon_nam } from './do_name.js';
 import { rn2 } from './rng.js';
 import { A_ORIGINAL, A_CURRENT, A_WIS, OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED,
@@ -46,7 +46,6 @@ function Qstat() { return game.quest_status; }
 
 // C ref: dungeon.h Is_qstart(), Is_qlocate(), Is_nemesis(); qstart_level
 function topo() { return game.dungeon_topology; }
-function Is_qstart(x) { return on_level(x, topo().d_qstart_level); }
 function Is_qlocate(x) { return on_level(x, topo().d_qlocate_level); }
 function Is_nemesis(x) { return on_level(x, topo().d_nemesis_level); }
 

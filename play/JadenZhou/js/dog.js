@@ -33,7 +33,7 @@ import { uhis } from './mhitu.js';
 import { livelog_printf } from './display.js';
 import { LL_CONDUCT } from './const.js';
 import { an } from './objnam.js';
-import { mon_pmname } from './do_name.js';
+import { mon_pmname, christen_monst } from './do_name.js';
 import { game } from './gstate.js';
 import { redraw_worm, count_wsegs, wormgone, get_wormno, initworm,
          MAX_NUM_WORMS } from './worm.js';
@@ -156,14 +156,6 @@ function pet_type() {
         return PM_LITTLE_DOG;
     else
         return rn2(2) ? PM_KITTEN : PM_LITTLE_DOG;
-}
-
-// C ref: do_name.c christen_monst() -- only records the name; the
-// name-length limit and the shopkeeper/priest name handling are not
-// needed for a starting pet.
-function christen_monst(mtmp, name) {
-    mtmp.mgivenname = name;
-    return mtmp;
 }
 
 // C ref: dog.c makedog()

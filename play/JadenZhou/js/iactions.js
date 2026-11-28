@@ -7,10 +7,10 @@
 import { shk_your } from './shk.js';
 import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { is_plural } from './wield.js';
-import { pmatch } from './pager.js';
+import { ia_checkfile } from './pager.js';
 import { game } from './gstate.js';
 import * as O from './objects.js';
-import { objects, OBJ_NAME, OBJ_DESCR, obj_descr, is_ammo, is_missile,
+import { objects, OBJ_NAME, OBJ_DESCR, is_ammo, is_missile,
          is_launcher, ammo_and_launcher, bimanual, is_blade, is_wet_towel,
          is_graystone, is_weptool, Is_container } from './objects.js';
 import {
@@ -20,7 +20,8 @@ import {
     GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, Has_contents, ONAME, has_oname,
     P_DAGGER, P_SABER, P_BOW, P_CROSSBOW, IS_ALTAR, IS_GRAVE, IS_FOUNTAIN,
     IS_WALL, IS_DOOR, IS_ROOM, SDOOR, STAIRS, LADDER, CORR,
-    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, CLOUD, IS_AIR, Is_waterlevel, Is_earthlevel,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, CLOUD, IS_AIR, Is_waterlevel,
+    Is_earthlevel, HAND,
 } from './const.js';
 import { db_under_typ, stairway_at } from './display.js';
 import { is_pool, is_lava } from './makemon.js';
@@ -31,10 +32,9 @@ import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
     tty_select_menu, tty_destroy_nhwindow,
 } from './wintty.js';
-import { xname, makeplural, makesingular, fruit_from_name, an,
+import { xname, makeplural, fruit_from_name, an,
          armor_simple_name, the_unique_obj, cxname,
          distant_name } from './objnam.js';
-import { data_base } from './data_base.js';
 import { is_flammable } from './mkobj.js';
 import * as M from './monsters.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
@@ -42,6 +42,7 @@ import { artiname, artifact_name, undiscovered_artifact } from './artifact.js';
 import { strncmpi, lowc, strstri } from './hacklib.js';
 import { CapitalMon } from './rumors.js';
 import { cantwield, could_twoweap, metallivorous, vegan } from './mondata.js';
+import { body_part } from './insight.js';
 
 const IA_NONE = 0,
     IA_UNWIELD = 1, /* hack for 'w-' */
@@ -83,13 +84,6 @@ function hero_data() {
     if (!d)
         ia_not_ported('youmonst.data');
     return d;
-}
-
-/* C ref: polyself.c body_part() -- unpolymorphed humanoid hero only */
-function body_part_hand() {
-    if (game.u.mtimedone) /* Upolyd */
-        ia_not_ported('body_part() for a polymorphed hero');
-    return "hand"; /* humanoid_parts[HAND] */
 }
 
 // C ref: eat.c is_edible()
@@ -416,102 +410,6 @@ function check_invent_gold(why) {
         if (o.oclass === O.COIN_CLASS && o.invlet !== '$')
             ia_not_ported('check_invent_gold() with misplaced gold');
     return false;
-}
-
-// C ref: pager.c checkfile() -- the chkfilIaCheck | chkfilDontAsk case:
-// is there a data.base entry for 'inp'?  (The entry names come from
-// data_base.js; the entry text is not needed for this check.)
-function checkfile_iacheck(inp) {
-    let dbase_str = inp.toLowerCase();
-    let ep, ap, alt = null;
-
-    if (dbase_str.startsWith("interior of ")) dbase_str = dbase_str.slice(12);
-    if (dbase_str.startsWith("a ")) dbase_str = dbase_str.slice(2);
-    else if (dbase_str.startsWith("an ")) dbase_str = dbase_str.slice(3);
-    else if (dbase_str.startsWith("the ")) dbase_str = dbase_str.slice(4);
-    else if (dbase_str.startsWith("some ")) dbase_str = dbase_str.slice(5);
-    else if (/^[0-9]/.test(dbase_str)) {
-        /* remove count prefix */
-        dbase_str = dbase_str.replace(/^[0-9]+/, '');
-        if (dbase_str[0] === ' ') dbase_str = dbase_str.slice(1);
-    }
-    if (dbase_str.startsWith("pair of ")) dbase_str = dbase_str.slice(8);
-    if (dbase_str.startsWith("tame ")) dbase_str = dbase_str.slice(5);
-    else if (dbase_str.startsWith("peaceful ")) dbase_str = dbase_str.slice(9);
-    if (dbase_str.startsWith("invisible ")) dbase_str = dbase_str.slice(10);
-    if (dbase_str.startsWith("saddled ")) dbase_str = dbase_str.slice(8);
-    if (dbase_str.startsWith("blessed ")) dbase_str = dbase_str.slice(8);
-    else if (dbase_str.startsWith("uncursed ")) dbase_str = dbase_str.slice(9);
-    else if (dbase_str.startsWith("cursed ")) dbase_str = dbase_str.slice(7);
-    if (dbase_str.startsWith("empty ")) dbase_str = dbase_str.slice(6);
-    if (dbase_str.startsWith("partly used ")) dbase_str = dbase_str.slice(12);
-    else if (dbase_str.startsWith("partly eaten ")) dbase_str = dbase_str.slice(13);
-    if (dbase_str.startsWith("statue of ")) dbase_str = dbase_str.slice(0, 6);
-    else if (dbase_str.startsWith("figurine of ")) dbase_str = dbase_str.slice(0, 8);
-    /* remove enchantment ("+0 aklys") */
-    if (dbase_str && "+-".includes(dbase_str[0]) && /[0-9]/.test(dbase_str[1] || '')) {
-        dbase_str = dbase_str.slice(1).replace(/^[0-9]+/, '');
-        if (dbase_str[0] === ' ') dbase_str = dbase_str.slice(1);
-    }
-    if (dbase_str.startsWith("moist towel"))
-        dbase_str = "wet" + dbase_str.slice(5); /* skip "mo" replace "ist" */
-    if (!dbase_str)
-        return false;
-
-    /* adjust the input to remove "named " and "called " */
-    if ((ep = dbase_str.indexOf(" named ")) >= 0) {
-        alt = dbase_str.slice(ep + 7);
-        if ((ap = dbase_str.indexOf(" called ")) >= 0 && ap < ep)
-            ep = ap; /* "named" is alt but truncate at "called" */
-    } else if ((ep = dbase_str.indexOf(" called ")) >= 0) {
-        alt = dbase_str.slice(ep + 8);
-    } else
-        ep = dbase_str.indexOf(", ");
-    if (ep > 0)
-        dbase_str = dbase_str.slice(0, ep);
-    if (alt && (alt.startsWith("a ") || alt.startsWith("an ")
-                || alt.startsWith("the ")))
-        alt = alt.slice(alt.indexOf(' ') + 1);
-    /* remove charges or "(lit)" */
-    if ((ep = dbase_str.indexOf(" (")) > 0)
-        dbase_str = dbase_str.slice(0, ep);
-    if (alt && (ap = alt.indexOf(" (")) > 0)
-        alt = alt.slice(0, ap);
-    /* named fruit: "fruit" is the alternate description */
-    if (!alt && fruit_from_name(dbase_str, true, null))
-        alt = obj_descr[O.SLIME_MOLD].oc_name;
-    else if (!alt)
-        alt = makesingular(dbase_str);
-
-    for (let pass = (alt === dbase_str) ? 0 : 1; pass >= 0; --pass) {
-        const target = pass ? alt : dbase_str;
-        for (const { keys: entry } of data_base) {
-            for (const key of entry) {
-                const chk_skip = (key[0] === '~') ? 1 : 0;
-                if (pmatch(key.slice(chk_skip), target)) {
-                    if (chk_skip)
-                        break; /* skipping_entry */
-                    return true; /* found_in_file; ia_checking */
-                }
-            }
-        }
-    }
-    return false;
-}
-
-// C ref: pager.c ia_checkfile()
-function ia_checkfile(otmp) {
-    /* singular() of xname() of otmp is what "/i" looks up */
-    const save_quan = otmp.quan;
-    let itemnam;
-    otmp.quan = 1;
-    try {
-        /* using xname for corpses does not give the monster type */
-        itemnam = (otmp.otyp === O.CORPSE) ? cxname(otmp) : xname(otmp);
-    } finally {
-        otmp.quan = save_quan;
-    }
-    return checkfile_iacheck(itemnam);
 }
 
 // C ref: iactions.c item_naming_classification()
@@ -1004,7 +902,7 @@ export async function itemactions(otmp) {
                    "Wield the tin opener to easily open tins");
     } else if (!already_worn) {
         buf = `Wield this ${(otmp.quan > 1) ? "stack" : "item"} in your ${
-            makeplural(body_part_hand())}`;
+            makeplural(body_part(HAND))}`;
         ia_addmenu(win, IA_WIELD_OBJ, 'w', buf);
     }
 
@@ -1057,7 +955,7 @@ export async function itemactions(otmp) {
                    "Zap this wand to release its magic");
 
     /* ?: Look up an item in the game's database */
-    if (ia_checkfile(otmp)) {
+    if (await ia_checkfile(otmp)) {
         buf = `Look up information about ${(otmp.quan > 1) ? "these" : "this"}`;
         ia_addmenu(win, IA_WHATIS_OBJ, '/', buf);
     }

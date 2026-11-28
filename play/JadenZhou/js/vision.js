@@ -10,13 +10,12 @@ import {
     COLNO, ROWNO, DOOR, SDOOR,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
-    IS_WALL, IS_OBSTRUCTED, IS_WATERWALL, TREE, CLOUD, LAVAWALL, MOAT,
-    DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, M_AP_TYPMASK, M_AP_OBJECT,
-    M_AP_FURNITURE, Is_juiblex_level, isok,
+    IS_WALL, IS_OBSTRUCTED, IS_WATERWALL, TREE, CLOUD, LAVAWALL,
+    M_AP_TYPMASK, M_AP_OBJECT, M_AP_FURNITURE,
 } from './const.js';
 import { BOULDER } from './objects.js';
 import { newsym } from './display.js';
-import { m_at } from './makemon.js';
+import { m_at, is_moat } from './makemon.js';
 import { visible_region_at } from './region.js';
 import { Is_rogue_level, ROOMOFFSET } from './const.js';
 
@@ -96,20 +95,6 @@ export function is_lightblocker_mappear(mon) {
                     || mon.mappearance === S_vcdoor
                     || mon.mappearance < S_ndoor /* = walls */
                     || mon.mappearance === S_tree)));
-}
-
-// C ref: hack.c is_moat()
-function is_moat(x, y) {
-    if (!isok(x, y))
-        return false;
-    const lev = game.level.at(x, y);
-    const ltyp = lev.typ;
-    if (!Is_juiblex_level(game.u.uz)
-        && (ltyp === MOAT
-            || (ltyp === DRAWBRIDGE_UP
-                && ((lev.drawbridgemask || 0) & DB_UNDER) === DB_MOAT)))
-        return true;
-    return false;
 }
 
 // C ref: vision.c does_block()

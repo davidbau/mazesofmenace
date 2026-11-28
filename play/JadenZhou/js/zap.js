@@ -11,7 +11,7 @@
 import { rndmonnam } from './do_name.js';
 import { adjalign } from './attrib.js';
 import { PM_ARCHEOLOGIST } from './monsters.js';
-import { obj_extract_self, place_object } from './mkobj.js';
+import { obj_extract_self, place_object, level_objects_at } from './mkobj.js';
 import { sokoban_guilt } from './trap.js';
 import { breakobj } from './dothrow.js';
 import { shkname } from './shknam.js';
@@ -35,7 +35,8 @@ import { more_experienced } from './exper.js';
 import { observe_object, discover_object } from './o_init.js';
 import { The, xname, Tobjnam, vtense, cloak_simple_name, suit_simple_name,
          helm_simple_name, gloves_simple_name, boots_simple_name,
-         shirt_simple_name, shield_simple_name } from './objnam.js';
+         shirt_simple_name, shield_simple_name,
+         simple_typename } from './objnam.js';
 import { mon_nam } from './do_name.js';
 import { resists_blnd, resists_blnd_by_arti, nohands, is_mplayer, is_whirly,
          mindless, digests, is_rider, eyecount,
@@ -95,7 +96,7 @@ import { MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS } from './const.js';
 import { canspotmon, map_invisible, unmap_invisible } from './display.js';
 import { find_mac } from './worn.js';
 import { tmp_at, DISP_BEAM, DISP_CHANGE, DISP_END } from './display.js';
-import { zap_dig } from './dig.js';
+import { zap_dig, bury_objs } from './dig.js';
 import { couldsee } from './vision.js';
 import { SCROLL_CLASS, FOOD_CLASS, GLOB_OF_GREEN_SLIME, SCR_FIRE, SPE_FIREBALL,
          BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, TALLOW_CANDLE,
@@ -178,7 +179,8 @@ import { which_armor as which_armor_zp, setnotworn as setnotworn_zp,
          bypass_objlist as bypass_objlist_zp,
          nxt_unbypassed_obj as nxt_unbypassed_obj_zp } from './worn.js';
 import { m_useup, rnd_hallublast } from './mthrowu.js';
-import { uhim, uhis, ugolemeffects as ugolemeffects_zp } from './mhitu.js';
+import { uhim, uhis, ugolemeffects as ugolemeffects_zp,
+         u_slow_down } from './mhitu.js';
 import { burn_away_slime as burn_away_slime_zp,
          hliquid as hliquid_zp, potionbreathe as potionbreathe_zp,
          make_stunned as make_stunned_zp, incr_itimeout as incr_itimeout_zp,
@@ -242,8 +244,7 @@ import { DRAWBRIDGE_UP as DRAWBRIDGE_UP_ZP, DRAWBRIDGE_DOWN as DRAWBRIDGE_DOWN_Z
          isok as isok_zp, IS_WATERWALL as IS_WATERWALL_ZP } from './const.js';
 import { waterbody_name as waterbody_name_zp } from './pager.js';
 import { fix_wall_spines as fix_wall_spines_zp } from './mklev.js';
-import { del_engr_at as del_engr_at_zp } from './engrave.js';
-import { maybe_unhide_at as maybe_unhide_at_zp, minliquid as minliquid_zp } from './mon.js';
+import { minliquid as minliquid_zp } from './mon.js';
 import { spoteffects as spoteffects_zp } from './hack.js';
 import { is_moat as is_moat_zp } from './makemon.js';
 import { start_timer as start_timer_zp, long_to_any as long_to_any_zp,
@@ -357,7 +358,6 @@ import { hot_pursuit as hot_pursuit_bm } from './shk.js';
 import { noit_Monnam as noit_Monnam_bm } from './do_name.js';
 import { mstatusline as mstatusline_bm } from './insight.js';
 import { sticks as sticks_bm } from './engrave.js';
-import { obj_typename as obj_typename_bm } from './objnam.js';
 import { u_teleport_mon, rloco } from './teleport.js';
 import { closeholdingtrap as closeholdingtrap_bm, openholdingtrap as openholdingtrap_bm,
          openfallingtrap as openfallingtrap_bm } from './trap.js';
@@ -396,7 +396,7 @@ import { vision_recalc } from './vision.js';
 import { set_uinwater } from './trap.js';
 import { docrt } from './display.js';
 import { ustatusline } from './insight.js';
-import { unearth_objs as unearth_objs_dg } from './dig.js';
+import { unearth_objs } from './dig.js';
 import { mksobj, set_corpsenm } from './mkobj.js';
 import { STATUE, FIGURINE } from './objects.js';
 import { W_ARTI, BURIED_TOO, CONTAINED_TOO } from './const.js';
@@ -599,19 +599,6 @@ const c_obj_colors = [
     "bright magenta", "bright cyan", "white",
 ];
 
-/* C ref: objnam.c simple_typename() -- obj_typename() without the
-   user-assigned name or the appended description */
-function simple_typename_bm(otyp) {
-    const save_uname = objects[otyp].oc_uname;
-    objects[otyp].oc_uname = null; /* suppress any name given by user */
-    let bufp = obj_typename_bm(otyp);
-    objects[otyp].oc_uname = save_uname;
-    const pp = bufp.indexOf(" (");
-    if (pp >= 0)
-        bufp = bufp.slice(0, pp); /* strip the appended description */
-    return bufp;
-}
-
 // C ref: mon.c mimic_hit_msg()
 async function mimic_hit_msg(mtmp, otyp) {
     const ap = mtmp.mappearance;
@@ -623,7 +610,7 @@ async function mimic_hit_msg(mtmp, otyp) {
         break;
     case M_AP_OBJECT_BM:
         if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING) {
-            await pline_mon(mtmp, `${The(simple_typename_bm(ap))} seems a more vivid ${
+            await pline_mon(mtmp, `${The(simple_typename(ap))} seems a more vivid ${
                 c_obj_colors[objects[ap].oc_color]} than before.`);
         }
         break;
@@ -675,7 +662,7 @@ export async function bhitm(mtmp, otmp) {
         if (resists_magm_zp(mtmp)) { /* match effect on player */
             if (disguised_mimic && !disguised_as_mon(mtmp))
                 seemimic_rv(mtmp);
-            /* shieldeff(mtmp->mx, mtmp->my): transient display only */
+            await shieldeff(mtmp.mx, mtmp.my);
             await pline("Boing!");
             /* 5.0: used to 'break' to avoid setting learn_it here */
         } else if (u.uswallow || rnd(20) < 10 + find_mac(mtmp)) {
@@ -966,7 +953,7 @@ export async function bhitm(mtmp, otmp) {
            so it's okay to leave `wake' set to TRUE here;
            revealing concealed mimic is handled by sleep_monst()] */
         reveal_invis = true;
-        if (sleep_monst_zp(mtmp, d(1 + otmp.spe, 12), WAND_CLASS))
+        if (await sleep_monst_zp(mtmp, d(1 + otmp.spe, 12), WAND_CLASS))
             await slept_monst(mtmp);
         if (!Blind())
             learn_it = true;
@@ -1177,8 +1164,7 @@ export async function bhito(obj, otmp) {
                 await boxlock_zy(obj, otmp);
 
             if (obj_shudders(obj)) {
-                const top = (g.level.objects || []).find(o => o.ox === u.ux
-                                                         && o.oy === u.uy);
+                const top = level_objects_at(u.ux, u.uy)[0] || null;
                 const cover = ((obj === top) && u.uundetected
                                && (g.youmonst.data.mflags1 & M1_CONCEAL) !== 0);
 
@@ -1751,8 +1737,7 @@ export async function bhitpile(
     let first;
     let hitanything = 0;
     /* svl.level.objects[tx][ty] chain, top of the pile first */
-    const pile_at = () => (g.level.objects || []).filter(o => o.ox === tx
-                                                         && o.oy === ty);
+    const pile_at = () => level_objects_at(tx, ty);
 
     if (!pile_at().length)
         return 0;
@@ -2180,7 +2165,7 @@ export async function zapyourself(obj, ordinary) {
     case O_zy.SPE_FORCE_BOLT:
         learn_it = true;
         if (u.uprops[ANTIMAGIC_ZY].intrinsic || u.uprops[ANTIMAGIC_ZY].extrinsic) {
-            /* shieldeff(u.ux, u.uy): transient display only */
+            await shieldeff(game.u.ux, game.u.uy);
             await pline("Boing!");
             monstseesu(M_SEEN_MAGR_ZY);
         } else {
@@ -2203,7 +2188,7 @@ export async function zapyourself(obj, ordinary) {
             await exercise(A_CON_ZP, false);
             monstunseesu(M_SEEN_ELEC_ZP);
         } else {
-            /* shieldeff(u.ux, u.uy) */
+            await shieldeff(game.u.ux, game.u.uy);
             await You("zap yourself, but seem unharmed.");
             monstseesu(M_SEEN_ELEC_ZP);
             await ugolemeffects_zp(AD_ELEC, orig_dmg);
@@ -2221,7 +2206,7 @@ export async function zapyourself(obj, ordinary) {
         learn_it = true;
         orig_dmg = d(12, 6);
         if (uhave_zp(FIRE_RES)) { /* Fire_resistance */
-            /* shieldeff(u.ux, u.uy) */
+            await shieldeff(game.u.ux, game.u.uy);
             await You_feel("rather warm.");
             monstseesu(M_SEEN_FIRE_ZP);
             await ugolemeffects_zp(AD_FIRE, orig_dmg);
@@ -2242,7 +2227,7 @@ export async function zapyourself(obj, ordinary) {
         learn_it = true;
         orig_dmg = d(12, 6);
         if (uhave_zp(COLD_RES)) { /* Cold_resistance */
-            /* shieldeff(u.ux, u.uy) */
+            await shieldeff(game.u.ux, game.u.uy);
             await You_feel("a little chill.");
             monstseesu(M_SEEN_COLD_ZP);
             await ugolemeffects_zp(AD_COLD, orig_dmg);
@@ -2258,7 +2243,7 @@ export async function zapyourself(obj, ordinary) {
     case O_zy.SPE_MAGIC_MISSILE:
         learn_it = true;
         if (Antimagic()) {
-            /* shieldeff(u.ux, u.uy) */
+            await shieldeff(game.u.ux, game.u.uy);
             await pline_The("missiles bounce!");
             monstseesu(M_SEEN_MAGR_ZY);
         } else {
@@ -2322,7 +2307,7 @@ export async function zapyourself(obj, ordinary) {
     case SPE_SLEEP:
         learn_it = true;
         if (Sleep_resistance()) {
-            /* shieldeff(u.ux, u.uy): transient display only */
+            await shieldeff(game.u.ux, game.u.uy);
             await You("don't feel sleepy!");
             monstseesu(M_SEEN_SLEEP);
         } else {
@@ -2339,7 +2324,7 @@ export async function zapyourself(obj, ordinary) {
     case O_zy.SPE_SLOW_MONSTER:
         if (u.uprops[FAST_ZP].intrinsic & (TIMEOUT_ZP | INTRINSIC_ZP)) {
             learn_it = true;
-            await u_slow_down_zp();
+            await u_slow_down();
         }
         break;
 
@@ -2660,7 +2645,7 @@ export async function flashburn(duration, via_lightning) {
        a sparkle animation (even if also resisted due to being blind)
        _unless_ this is lightning-induced */
     if (!via_lightning && resists_blnd_by_arti(game.youmonst)) {
-        /* shieldeff(u.ux, u.uy): transient display only */
+        await shieldeff(game.u.ux, game.u.uy);
         return true;
     }
     return false;
@@ -2918,7 +2903,7 @@ async function zhitm(
         /* resistance and shield effect and revealing concealed mimic are
            handled by sleep_monst() */
         tmp = 0;
-        sleep_monst_zp(mon, d(nd, 25),
+        await sleep_monst_zp(mon, d(nd, 25),
                        type === ZT_WAND(ZT_SLEEP) ? WAND_CLASS : 0);
         break;
     case ZT_DEATH:                                   /* death/disintegration */
@@ -3918,7 +3903,7 @@ export async function melt_ice(x, y, msg) {
     if (t_at(x, y))
         trap_ice_effects(x, y, true); /* TRUE because ice_is_melting */
     obj_ice_effects_zp(x, y, false);
-    unearth_objs_zp(x, y);
+    unearth_objs(x, y);
     if (g.u.uinwater) /* Underwater */
         vision_recalc(1);
     newsym(x, y);
@@ -3958,23 +3943,6 @@ export function start_melt_ice_timeout(x, y,
         start_timer_zp(when, TIMER_LEVEL_ZP, MELT_ICE_AWAY_ZP,
                        long_to_any_zp(where));
     }
-}
-
-// C ref: dig.c bury_objs()
-function bury_objs_zp(x, y) {
-    const here = (game.level.objects || []).filter(
-        o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR');
-    if (here.length)
-        throw new Error('bury_objs(): burying objects under new ice or rock not ported yet');
-    /* don't expect any engravings here, but just in case */
-    del_engr_at_zp(x, y);
-    newsym(x, y);
-    maybe_unhide_at_zp(x, y);
-}
-
-// C ref: dig.c unearth_objs()
-function unearth_objs_zp(x, y) {
-    unearth_objs_dg(x, y);
 }
 
 // C ref: zap.c zap_over_floor()
@@ -4115,7 +4083,7 @@ export async function zap_over_floor(
                         lev.typ = lava ? ROOM_ZP : ICE;
                     }
                 }
-                bury_objs_zp(x, y);
+                await bury_objs(x, y);
                 /* if (!lava) Soundeffect(se_soft_crackling, 30); */
                 if (see_it) {
                     if (lava)
@@ -4373,8 +4341,7 @@ export async function burn_floor_objects(
     u_caused) {
     let cnt = 0;
 
-    for (const obj of (game.level.objects || []).filter(o => o.ox === x
-                                                        && o.oy === y)) {
+    for (const obj of level_objects_at(x, y)) {
         if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS
             || (obj.oclass === FOOD_CLASS
                 && obj.otyp === GLOB_OF_GREEN_SLIME)) {
@@ -4417,8 +4384,7 @@ export async function burn_floor_objects(
     /* This also ignites floor items, but does not change cnt
        because they weren't consumed. */
     /* ignite_items(svl.level.objects[x][y]), along the nexthere chain */
-    for (const obj of (game.level.objects || []).filter(o => o.ox === x
-                                                        && o.oy === y))
+    for (const obj of level_objects_at(x, y))
         if (!obj.lamplit && !obj.in_use)
             await catch_lit_zp(obj);
     return cnt;
@@ -4437,17 +4403,6 @@ function disguised_as_non_mon(mtmp) {
     return (!sensemon_zp(mtmp)
             && !!mtmp.m_ap_type
             && mtmp.m_ap_type !== M_AP_MONSTER_ZP);
-}
-
-// C ref: mhitu.c u_slow_down()
-/* called when your intrinsic speed is taken away */
-async function u_slow_down_zp() {
-    game.u.uprops[FAST_ZP].intrinsic = 0; /* HFast = 0L */
-    if (!uhave_zp(FAST_ZP)) /* !Fast */
-        await You("slow down.");
-    else /* speed boots */
-        await Your("quickness feels less natural.");
-    await exercise(A_DEX_ZP, false);
 }
 
 /* C ref: hack.h ERODE_CORRODE */

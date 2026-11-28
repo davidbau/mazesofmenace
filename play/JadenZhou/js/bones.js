@@ -13,7 +13,7 @@ import { rn2 } from './rng.js';
 import {
     Is_botlevel, MAGIC_PORTAL, NON_PM, LEAVESTATUE, ismnum, isok, u_at,
     Is_oracle_level, ROOMOFFSET, DELPHI, SHOPBASE, M_SEEN_NOTHING,
-    LOST_NONE, ONAME_BONES, NO_MINVENT, MM_NONAME, DEFUNCT_MONSTER, HOLE,
+    LOST_NONE, ONAME_BONES, NO_MINVENT, MM_NONAME, DEFUNCT_MONSTER,
 } from './const.js';
 import {
     ledger_no, assign_level, Is_special, Is_branchlev, In_hell,
@@ -63,6 +63,8 @@ import { the } from './iactions.js';
 import { tty_yn_function } from './wintty.js';
 import { m_carrying } from './mthrowu.js';
 import { unleash_all } from './apply.js';
+import { is_mines_prize, is_soko_prize } from './monmove.js';
+import { unhideable_trap } from './trap.js';
 
 /* mondata.h */
 /* mondata.h is_Vlad() */
@@ -70,15 +72,7 @@ function is_Vlad(mtmp) {
     return mtmp.data === mons[PM_VLAD_THE_IMPALER]
            || mtmp.cham === PM_VLAD_THE_IMPALER;
 }
-/* obj.h is_mines_prize(), is_soko_prize() */
-function is_mines_prize(o) {
-    return !!game.context?.achieveo && o.o_id === game.context.achieveo.mines_prize_oid;
-}
-function is_soko_prize(o) {
-    return !!game.context?.achieveo && o.o_id === game.context.achieveo.soko_prize_oid;
-}
-/* trap.h unhideable_trap() */
-function unhideable_trap(ttyp) { return ttyp === HOLE; } /* visible traps */
+ /* visible traps */
 
 /* the members of an object chain (JS keeps some as arrays, invent as a
    nobj list) */

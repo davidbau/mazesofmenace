@@ -617,7 +617,9 @@ async function menu_pick_pay_items(ibillct, ibill) {
              * headings stay plain — same funnel as pickup_container's
              * query_objlist. */
             /* a selected marker is coloured too (wintty.c:1449 colours from char 2 of a selected row) */
-            out.push(`${e.selector} ${e.mark === '-' ? e.mark : menucolor_text(e.mark, e.text)} ${menucolor_text(e.text)}`);
+            /* set_item_state (wintty.c:1176-1192) paints a toggled row's '-'
+             * in the item's colour too; an untouched row keeps the plain '-' */
+            out.push(`${e.selector} ${e.mark === '-' && !e.touched ? e.mark : menucolor_text(e.mark, e.text)} ${menucolor_text(e.text)}`);
         }
         for (let i = 0; i < out.length; i++) {
             let col = 0;
@@ -704,6 +706,7 @@ async function menu_pick_pay_items(ibillct, ibill) {
              * incremental repaint marks a plain selection '+'. */
             pageEntry.selected = counted || !pageEntry.selected;
             pageEntry.mark = pageEntry.selected ? (counted ? '#' : '+') : '-';
+            pageEntry.touched = true;
             continue;
         }
         /* C wintty.c process_menu_window() menu_* defaults (defaults.nh):
@@ -719,9 +722,11 @@ async function menu_pick_pay_items(ibillct, ibill) {
                 /* C wintty.c:1208: selecting an already selected entry
                  * preserves its subset count (and its '#' indicator). */
                 if ((k === 0x2e || k === 0x2c) && en.selected) continue;
+                const was = en.selected;
                 en.selected = (k === 0x2e || k === 0x2c) ? true
                     : (k === 0x2d || k === 0x5c) ? false : !en.selected;
                 en.mark = en.selected ? '+' : '-';
+                if (was !== en.selected) en.touched = true;
             }
             continue;
         }
@@ -739,6 +744,7 @@ async function menu_pick_pay_items(ibillct, ibill) {
                 (curr) => {
                     curr.en.selected = counted || !curr.en.selected;
                     curr.en.mark = curr.en.selected ? (counted ? '#' : '+') : '-';
+                    curr.en.touched = true;
                 });
             titleErased = true;
             continue;

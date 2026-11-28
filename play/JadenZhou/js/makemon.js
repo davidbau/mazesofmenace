@@ -13,10 +13,12 @@
 import { shkname } from './shknam.js';
 import { sensemon, set_msg_xy, pline_mon } from './display.js';
 import { mhidden_description } from './pager.js';
-import { MHID_ARTICLE, MHID_ALTMON } from './const.js';
+import { MHID_ARTICLE, MHID_ALTMON, In_sokoban, In_mines, In_quest, In_V_tower,
+         Is_stronghold, Is_earthlevel, Is_rogue_level, In_endgame,
+         Is_knox_level } from './const.js';
 import { db_under_typ } from './display.js';
 import { impossible } from './hack.js';
-import { rnd_class } from './mkobj.js';
+import { rnd_class, level_objects_at } from './mkobj.js';
 import { christen_monst, rndghostname, Amonnam, y_monnam, mon_nam, pmname,
          Mgender, YMonnam, pronoun_gender, PRONOUN_HALLU } from './do_name.js';
 import { genders } from './role.js';
@@ -97,7 +99,7 @@ import { is_exclusion_zone } from './mklev.js';
 import { LR_MONGEN } from './const.js';
 import { noteleport_level } from './teleport.js';
 import { newcham_sync } from './mon.js';
-import { mpickobj } from './steal.js';
+import { mpickobj, findgold } from './steal.js';
 import { add_to_minv, weight } from './mkobj.js';
 import { m_dowear, which_armor, mon_adjust_speed_sync } from './worn.js';
 import { def_monsyms } from './drawing.js';
@@ -182,13 +184,6 @@ function on_lev(z) {
     const uz = game.u.uz;
     return !!(z && (z.dnum || z.dlevel) && uz.dnum === z.dnum && uz.dlevel === z.dlevel);
 }
-function In_sokoban(lev) { return lev.dnum === game.dungeon_topology.d_sokoban_dnum; }
-function In_mines(lev) { return lev.dnum === game.dungeon_topology.d_mines_dnum; }
-function In_quest(lev) { return lev.dnum === game.dungeon_topology.d_quest_dnum; }
-function In_V_tower(lev) { return lev.dnum === game.dungeon_topology.d_tower_dnum; }
-function Is_stronghold() { return on_lev(game.dungeon_topology.d_stronghold_level); }
-function Is_knox() { return on_lev(game.dungeon_topology.d_knox_level); }
-function Is_earthlevel() { return on_lev(game.dungeon_topology.d_earth_level); }
 
 // ---- map / monster-position helpers ----
 // C ref: display.h m_at(); MON_AT() -- level monsters are kept in
@@ -379,16 +374,6 @@ export function goodpos(x, y, mtmp, gpflags) {
         return false;
 
     return true;
-}
-
-// ---- inventory helpers ----
-/* C ref: worn.c which_armor() lives in worn.js */
-export { which_armor };
-// C ref: invent.c findgold()
-function findgold(chain) {
-    for (const o of chain || [])
-        if (o.otyp === O.GOLD_PIECE) return o;
-    return null;
 }
 
 // C ref: makemon.c m_initthrow()
@@ -1497,7 +1482,7 @@ export function makemon(ptr, x, y, mmflags) {
     if (ptr.msound === M.MS_LEADER || ptr.msound === M.MS_NEMESIS)
         mon_learns_traps(mtmp, ALL_TRAPS);
     /* locations where monsters are already experienced with wands */
-    if (Is_stronghold() || Is_knox() || In_endgame(game.u.uz)
+    if (Is_stronghold() || Is_knox_level() || In_endgame(game.u.uz)
         || In_hell(game.u.uz) || In_V_tower(game.u.uz) || In_quest(game.u.uz))
         mtmp.mwandexp = true;
 
@@ -1996,7 +1981,7 @@ export function can_hide_under_obj(obj) {
 // the objects at <x,y>, top of the pile first (C's level.objects[x][y]
 // chain); game.level.objects is fobj, newest first, in pile order
 function floor_pile(x, y) {
-    return (game.level.objects || []).filter(o => o.ox === x && o.oy === y);
+    return level_objects_at(x, y);
 }
 
 // C ref: mon.c hideunder()
@@ -2527,15 +2512,6 @@ function montooweak(monindx, lev) { return mons[monindx].difficulty < lev; }
 
 // C ref: mondata.h pm_resistance()
 export function pm_resistance(ptr, typ) { return (ptr.mresists & typ) !== 0; }
-
-// C ref: dungeon.h Is_rogue_level(); In_endgame()
-function Is_rogue_level(lev) {
-    const z = game.dungeon_topology.d_rogue_level;
-    return !!((z.dlevel || z.dnum) && lev.dnum === z.dnum && lev.dlevel === z.dlevel);
-}
-export function In_endgame(lev) {
-    return lev.dnum === game.dungeon_topology.d_astral_level.dnum;
-}
 
 // C ref: makemon.c uncommon()
 function uncommon(mndx) {

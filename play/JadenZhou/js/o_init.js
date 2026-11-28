@@ -38,6 +38,7 @@ import { tty_create_nhwindow, tty_start_menu, tty_add_menu, add_menu_str,
          tty_display_nhwindow } from './wintty.js';
 import { let_to_name, def_inv_order } from './invent.js';
 import { obj_typename, Japanese_item_name } from './objnam.js';
+import { append_price_quote } from './shk.js';
 
 const BUFSZ = 256;
 
@@ -539,38 +540,6 @@ function disco_typename(otyp) {
         }
     }
     return result;
-}
-
-// C ref: shk.c append_price_quote() -- the price range seen in shops
-function append_price_quote(buf, otyp) {
-    let buf2 = '';
-    let sep = "";
-    const o = objects[otyp];
-
-    if (o.oc_sell_minseen > o.oc_sell_maxseen
-        && o.oc_buy_minseen > o.oc_buy_maxseen)
-        return buf;
-
-    buf2 += " {";
-
-    if (o.oc_buy_minseen < o.oc_buy_maxseen) {
-        buf2 += `buy ${o.oc_buy_minseen}-${o.oc_buy_maxseen}`;
-        sep = " ";
-    } else if (o.oc_buy_minseen === o.oc_buy_maxseen) {
-        buf2 += `buy ${o.oc_buy_minseen}`;
-        sep = " ";
-    }
-
-    if (o.oc_sell_minseen < o.oc_sell_maxseen) {
-        buf2 += `${sep}sell ${o.oc_sell_minseen}-${o.oc_sell_maxseen}`;
-    } else if (o.oc_sell_minseen === o.oc_sell_maxseen) {
-        buf2 += `${sep}sell ${o.oc_sell_minseen}`;
-    }
-
-    buf2 += "}";
-    if (buf2.length < BUFSZ - buf.length - 1)
-        buf += buf2;
-    return buf;
 }
 
 // C ref: o_init.c disco_append_typename() -- append typename(dis) to buf,

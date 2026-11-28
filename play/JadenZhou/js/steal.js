@@ -44,11 +44,11 @@ import { tele_restrict, rloc } from './teleport.js';
 import { monflee } from './monmove.js';
 import { welded } from './wield.js';
 import { can_carry } from './dogmove.js';
-import { subfrombill, shop_keeper, mbodypart, find_objowner } from './shk.js';
+import { subfrombill, shop_keeper, find_objowner } from './shk.js';
 import { encumber_msg } from './pickup.js';
 import { dmgtype, can_teleport, is_animal, slithy, throws_rocks,
          touch_petrifies } from './mondata.js';
-import { body_part } from './insight.js';
+import { body_part, mbodypart } from './insight.js';
 import { urgent_pline } from './display.js';
 import { add_to_minv as add_to_minv_core } from './mkobj.js';
 import { splitobj } from './mkobj.js';

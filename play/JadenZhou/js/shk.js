@@ -5,7 +5,7 @@
 // Paths no session reaches yet throw a 'not ported yet' error.
 
 import { helpless } from './monmove.js';
-import { online2, plur, distu, mdistu, onlineu } from './hacklib.js';
+import { online2, plur, distu, mdistu, onlineu, strncmpi } from './hacklib.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
 import { arti_cost } from './artifact.js';
@@ -22,7 +22,7 @@ import { mnexto } from './teleport.js';
 import { mnearto } from './mon.js';
 import { yelp, growl } from './sounds.js';
 import { tty_yn_function } from './wintty.js';
-import { body_part } from './insight.js';
+import { body_part, record_achievement } from './insight.js';
 import { poly_gender } from './polyself.js';
 import { is_demon, type_is_pname, resist_conflict,
          nolimbs } from './mondata.js';
@@ -46,7 +46,6 @@ import { Shknam, shkname, shtypes } from './shknam.js';
 import { y_monnam, pronoun_gender, PRONOUN_NO_IT,
          PRONOUN_HALLU } from './do_name.js';
 import { adjalign, ACURR } from './attrib.js';
-import { record_achievement } from './do.js';
 import { ACH_SHOP } from './const.js';
 import { discover_object, makeknown } from './o_init.js';
 import { t_at } from './trap.js';
@@ -125,13 +124,13 @@ import { LANDMINE as LANDMINE_SK, BEAR_TRAP as BEAR_TRAP_SK, HOLE as HOLE_SK,
          PIT as PIT_SK, SPIKED_PIT as SPIKED_PIT_SK } from './const.js';
 import { unplacebc, placebc } from './ball.js';
 import { obfree } from './invent.js';
-import { place_object, mksobj } from './mkobj.js';
+import { place_object, mksobj, level_objects_at } from './mkobj.js';
 import { closed_door } from './makemon.js';
 import { picking_at } from './lock.js';
 import { block_point } from './vision.js';
 import { del_engr_at } from './engrave.js';
 import { deltrap, trapname } from './trap.js';
-import { mpickobj } from './steal.js';
+import { mpickobj, findgold } from './steal.js';
 import { ansimpleoname } from './iactions.js';
 import { Norep as Norep_sk, You_feel as You_feel_sk } from './display.js';
 import { stop_occupation as stop_occupation_sk } from './allmain.js';
@@ -174,13 +173,6 @@ export function um_dist(x, y, n) {
     return Math.abs(game.u.ux - x) > n || Math.abs(game.u.uy - y) > n;
 }
 /* C ref: hacklib.c online2(); hack.h onlineu() */
-/* C ref: hacklib.c strncmpi() -- nonzero when the strings differ */
-function strncmpi(s1, s2, n) {
-    return (s1 || '').slice(0, n).toLowerCase()
-           !== (s2 || '').slice(0, n).toLowerCase();
-}
-/* C ref: polyself.c mbodypart() -- ported in insight.js beside body_part() */
-export { mbodypart };
 
 const angrytexts = [ "quite upset", "ticked off", "furious" ];
 
@@ -949,11 +941,8 @@ const horiz = (i) => ((i % 3) - 1);
 const vert = (i) => (Math.trunc(i / 3) - 1);
 /* C ref: svl.level.objects[x][y] -- top object of the floor pile at <x,y>
    (place_object() puts new objects at the front of level.objects) */
-function level_objects_top(x, y) {
-    for (const o of game.level.objects || [])
-        if (o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR')
-            return o;
-    return null;
+export function level_objects_top(x, y) {
+    return level_objects_at(x, y)[0] || null;
 }
 
 // C ref: shk.c litter_getpos()
@@ -2035,18 +2024,6 @@ export async function donate_gold(
 }
 
 // ── money transfer, paying ──
-
-/* C ref: invent.c findgold() */
-function findgold(chain) {
-    if (Array.isArray(chain)) {
-        for (const o of chain)
-            if (o.oclass === COIN_CLASS) return o;
-        return null;
-    }
-    for (let o = chain; o; o = o.nobj)
-        if (o.oclass === COIN_CLASS) return o;
-    return null;
-}
 
 // C ref: shk.c money2mon()
 /*

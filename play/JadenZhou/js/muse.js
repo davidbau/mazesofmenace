@@ -19,13 +19,15 @@ import { an, xname, doname, singular } from './objnam.js';
 import { simpleonames } from './iactions.js';
 import { observe_object, discover_object, objdescr_is,
          makeknown } from './o_init.js';
-import { unknow_object, unbless } from './mkobj.js';
+import { unknow_object, unbless, level_objects_at } from './mkobj.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
 import { seemimic } from './mon.js';
 import { monstseesu, monstunseesu } from './uhitm.js';
-import { losehp, unconscious as unconscious_mu } from './trap.js';
-import { find_mac } from './worn.js';
+import { losehp, unconscious as unconscious_mu,
+         wearing_iron_shoes } from './trap.js';
+import { find_mac, Dragon_mail_to_pm, Dragon_scales_to_pm,
+         Is_dragon_mail } from './worn.js';
 import { resists_magm, is_animal, mindless, nohands, verysmall, throws_rocks,
          likes_gems, noncorporeal, amorphous, unsolid, is_mercenary, acidic,
          is_unicorn, touch_petrifies, resists_ston, resists_acid, slimeproof,
@@ -98,16 +100,15 @@ import { rndmonnam } from './do_name.js';
 import { HEAVY_IRON_BALL, SILVER, ICE_BOX, BAG_OF_HOLDING,
          SHIELD_OF_REFLECTION, AMULET_OF_REFLECTION, SILVER_DRAGON_SCALES,
          SILVER_DRAGON_SCALE_MAIL, AMULET_OF_LIFE_SAVING, ARMOR_CLASS,
-         GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALES,
-         GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALE_MAIL } from './objects.js';
+         YELLOW_DRAGON_SCALES } from './objects.js';
 
 import { monverbself, PRONOUN_HALLU } from './do_name.js';
 import { same_race } from './mondata.js';
 import { ARTICLE_A, SUPPRESS_INVISIBLE, SUPPRESS_SADDLE, SUPPRESS_IT,
-         AUGMENT_IT, W_ARMF, TELEPORT_CONTROL, STRAT_WAITFORU, XKILL_NOMSG,
+         AUGMENT_IT, TELEPORT_CONTROL, STRAT_WAITFORU, XKILL_NOMSG,
          XKILL_NOCONDUCT, HAND, DOOR, DBWALL } from './const.js';
 import { AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION,
-         SPE_BOOK_OF_THE_DEAD, IRON } from './objects.js';
+         SPE_BOOK_OF_THE_DEAD} from './objects.js';
 import { ART_ORB_OF_DETECTION } from './artilist.js';
 import { arti_reflects } from './artifact.js';
 import { Can_rise_up, ceiling } from './dungeon.js';
@@ -137,7 +138,7 @@ import { t_at } from './trap.js';
 import { monsndx, is_floater, passes_walls, dmgtype, haseyes,
          mon_knows_traps } from './mondata.js';
 import { monnear } from './mon.js';
-import { onscary, lined_up, in_your_sanctuary } from './monmove.js';
+import { onscary, lined_up } from './monmove.js';
 import * as M from './monsters.js';
 import { mons } from './monsters.js';
 import { BOULDER, BUGLE, UNICORN_HORN, CORPSE, TIN, POT_FULL_HEALING,
@@ -168,6 +169,8 @@ import { removed_from_icebox } from './pickup.js';
 import { cancel_monst } from './zap.js';
 import { hard_helmet } from './do_wear.js';
 import { pline_mon } from './display.js';
+import { in_your_sanctuary } from './priest.js';
+import { shieldeff } from './display.js';
 
 const WAND_BACKFIRE_CHANCE = 100; /* hack.h */
 const QBUFSZ = 128; /* global.h */
@@ -218,16 +221,6 @@ export function m_seenres(mon, mask) { return (mon.seen_resistance || 0) & mask;
 
 /* C ref: obj.h Has_contents() */
 function Has_contents(o) { return !!(o.cobj && o.cobj.length); }
-/* C ref: obj.h Is_dragon_mail(), Dragon_scales_to_pm(), Dragon_mail_to_pm() */
-function Is_dragon_mail(o) {
-    return o.otyp >= GRAY_DRAGON_SCALE_MAIL && o.otyp <= YELLOW_DRAGON_SCALE_MAIL;
-}
-function Dragon_scales_to_pm(o) {
-    return mons[M.PM_GRAY_DRAGON + o.otyp - GRAY_DRAGON_SCALES];
-}
-function Dragon_mail_to_pm(o) {
-    return mons[M.PM_GRAY_DRAGON + o.otyp - GRAY_DRAGON_SCALE_MAIL];
-}
 /* C ref: wizard.c mon_has_special() */
 export function mon_has_special(mtmp) {
     for (const otmp of minv(mtmp))
@@ -238,11 +231,6 @@ export function mon_has_special(mtmp) {
             || otmp.otyp === SPE_BOOK_OF_THE_DEAD)
             return true;
     return false;
-}
-/* C ref: trap.c wearing_iron_shoes() -- uses the monster's worn boots */
-function wearing_iron_shoes(mon) {
-    const boots = which_armor(mon, W_ARMF);
-    return !!(boots && objects[boots.otyp].oc_material === IRON);
 }
 
 // C ref: muse.c m_use_healing()
@@ -1390,7 +1378,7 @@ function mon_likes_objpile_at(mtmp, x, y) {
 
     /* monster likes any of the top 3 items in the pile?
        (svl.level.objects[x][y] chain, top of the pile first) */
-    const pile = (game.level.objects || []).filter(o => o.ox === x && o.oy === y);
+    const pile = level_objects_at(x, y);
     for (i = 0; i < pile.length && i < 3; i++) {
         if (mon_would_take_item(mtmp, pile[i]))
             return true;
@@ -2438,7 +2426,7 @@ async function mbhitm(mtmp, otmp) {
         if (hits_you) {
             if (Antimagic()) {
                 monstseesu(M_SEEN_MAGR); /* monsters notice hero resisting */
-                /* shieldeff(u.ux, u.uy): transient display only */
+                await shieldeff(game.u.ux, game.u.uy);
                 /* Soundeffect(se_boing, 40) */
                 await pline("Boing!");
                 learnit = true;
@@ -2457,7 +2445,7 @@ async function mbhitm(mtmp, otmp) {
             await stop_occupation();
             nomul(0);
         } else if (resists_magm(mtmp)) {
-            /* shieldeff(mtmp->mx, mtmp->my): transient display only */
+            await shieldeff(mtmp.mx, mtmp.my);
             /* Soundeffect(se_boing, 40) */
             await pline("Boing!");
             learnit = true;
@@ -2513,9 +2501,7 @@ async function mbhitm(mtmp, otmp) {
 async function fhito_loc(obj, tx, ty, fhito) {
     let hitanything = 0;
     /* svl.level.objects[tx][ty] chain, top of the pile first */
-    const pile = (game.level.objects || []).filter(o => o.ox === tx
-                                                    && o.oy === ty
-                                                    && o.where === 'OBJ_FLOOR');
+    const pile = level_objects_at(tx, ty);
 
     if (!fhito || !pile.length)
         return false;

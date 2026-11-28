@@ -8,7 +8,7 @@
 // ported yet.
 
 import { sellobj_state } from './pickup.js';
-import { SELL_NORMAL, SELL_DELIBERATE } from './const.js';
+import { SELL_NORMAL, SELL_DELIBERATE, is_hole, is_pit } from './const.js';
 import { game } from './gstate.js';
 import { fix_shop_damage } from './shk.js';
 import { livelog_printf, You_hear } from './display.js';
@@ -63,7 +63,7 @@ import { grow_up as grow_up_do } from './makemon.js';
 import { mcureblindness as mcureblindness_do } from './muse.js';
 import { delobj as delobj_do } from './invent.js';
 import { is_pool, is_lava } from './makemon.js';
-import { t_at, is_pit, is_hole, set_utrap, seetrap, lava_damage, climb_pit } from './trap.js';
+import { t_at, set_utrap, seetrap, lava_damage, climb_pit } from './trap.js';
 import { minstapetrify } from './trap.js';
 import { cansee } from './vision.js';
 import { distu } from './hacklib.js';
@@ -76,7 +76,7 @@ import { hmon } from './uhitm.js';
 import { HMON_THROWN, NO_KILLER_PREFIX } from './const.js';
 import { Passes_walls } from './youprop.js';
 import { reset_utrap } from './trap.js';
-import { PM_TOURIST, PM_ROGUE } from './monsters.js';
+import { PM_TOURIST, PM_ROGUE, PM_CROESUS } from './monsters.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { com_pager, deliver_splev_message } from './questpgr.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -119,7 +119,7 @@ import { Norep } from './display.js';
 import { makeplural } from './objnam.js';
 import { HAND } from './const.js';
 import { placebc, unplacebc, drag_down, ballrelease, drop_ball, ballfall } from './ball.js';
-import { You, newsym, stairway_at } from './display.js';
+import { You, newsym, stairway_at, reglyph_darkroom } from './display.js';
 import { can_reach_floor } from './engrave.js';
 import { doname } from './objnam.js';
 import { place_object } from './mkobj.js';
@@ -859,8 +859,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         close_nhfile(lnhfp);
         oinit(); /* reassign level dependent obj probabilities */
     }
-    /* reglyph_darkroom(): JS remembers no S_darkroom glyphs, and lit
-       corridors out of sight are remembered dark by newsym() */
+    reglyph_darkroom();
     /* set_uinwater(0) */
     u.uinwater = 0;
     /* do this prior to level-change pline messages */
@@ -1043,7 +1042,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await onquest(); /* might be reaching locate|goal level */
     } else if (topo.d_knox_level?.dlevel && on_level(u.uz, topo.d_knox_level)) {
         /* Is_knox() */
-        throw new Error('goto_level(): Fort Ludios arrival not ported yet');
+        /* alarm stops working once Croesus has died */
+        if (new_ || !g.mvitals[PM_CROESUS].died) {
+            await You("have penetrated a high security area!");
+            /* Soundeffect(se_alarm, 100) */
+            await pline("An alarm sounds!");
+            for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
+                if (DEADMONSTER(mtmp))
+                    continue;
+                mtmp.msleeping = 0;
+            }
+        }
     } else if (u.uz.dnum === topo.d_mines_dnum) { /* In_mines() */
         if (newdungeon)
             record_achievement(ACH_MINE);
@@ -1172,9 +1181,6 @@ async function temperature_change_msg(prev_temperature) {
             await You("are out of the cold.");
     }
 }
-
-// C ref: insight.c record_achievement() (ported in insight.js)
-export { record_achievement };
 
 // C ref: do.c boulder_hits_pool()
 /* Called when a boulder is dropped, thrown, or pushed.  If it ends up

@@ -1322,11 +1322,20 @@ export async function doddrop() {
     let ddropTitleErased = false;
     const ddropPaintedLines = () => {
         const painted = windowLines.slice();
-        for (const row of ddropRows)
-            if (ddropSelected.has(row.selector))
-                painted[row.line] = painted[row.line].slice(0, 2)
-                                  + (ddropCounts.has(row.selector) ? '#' : '+')
+        for (const row of ddropRows) {
+            const mark = ddropSelected.has(row.selector)
+                ? (ddropCounts.has(row.selector) ? '#' : '+') : '-';
+            /* wintty.c:1186-1193 set_item_state paints the toggled row's
+             * indicator with the item's own attr/color, so a MENUCOLOR match
+             * colours it too (\x01 = styled marker, coloratt.js menucolor_row);
+             * an untouched row keeps the page draw's plain '-'. */
+            if (ddropStyled.has(row.selector)) {
+                const raw = windowLines[row.line].replace(/\x1b\[[0-9;]*m/g, '');
+                painted[row.line] = menucolor_row(`${raw.slice(0, 2)}\x01${mark}${raw.slice(3)}`);
+            } else if (mark !== '-')
+                painted[row.line] = painted[row.line].slice(0, 2) + mark
                                   + painted[row.line].slice(3);
+        }
         if (ddropTitleErased) painted[0] = '';
         return painted;
     };
@@ -1336,6 +1345,8 @@ export async function doddrop() {
      * it afterwards, for the rows toggled since. */
     let ddropCorners = null;
     const ddropTouched = new Set();
+    /* rows set_item_state has repainted (any toggle, wintty.c:1176-1192) */
+    const ddropStyled = new Set();
     const showDdropMenu = async () => {
         const fresh = ddBuild(ddropPaintedLines());
         if (!ddropCorners?.length) {
@@ -1384,12 +1395,16 @@ export async function doddrop() {
                      * (wintty.c:1198-1308): select leaves curr->count alone,
                      * every deselect resets it to -1L, and the bulk inverts
                      * pass count -1L (:1659, :1698) so a select sets none. */
+                    const wasSel = ddropSelected.has(r.selector);
                     if (bulk === 'select') ddropSelected.add(r.selector);
                     else if (bulk === 'unselect' || ddropSelected.has(r.selector)) {
                         ddropSelected.delete(r.selector);
                         ddropCounts.delete(r.selector);
                     } else ddropSelected.add(r.selector);
                     if (ddropCorners?.length) ddropTouched.add(r.selector);
+                    /* set_all_on_page / unset_all_on_page skip a row already
+                     * in the wanted state (wintty.c:1206-1208, 1225-1227) */
+                    if (wasSel !== ddropSelected.has(r.selector)) ddropStyled.add(r.selector);
                 }
                 return;
             }
@@ -1397,6 +1412,7 @@ export async function doddrop() {
                      ?? ddropRows.find((r) => r.gsym && r.gsym === ch);
             if (!row) return;
             if (ddropCorners?.length) ddropTouched.add(row.selector);
+            ddropStyled.add(row.selector);
             if (ddropSelected.has(row.selector)) {
                 /* toggle_menu_curr (wintty.c:1122-1127): a count typed at an
                  * already-selected selector re-counts it rather than
@@ -1423,6 +1439,7 @@ export async function doddrop() {
                 ddropCorners = [...(ddropCorners || []), ...(g._menu_search_corner || [])];
                 g._menu_search_corner = null;
                 if (ddropCorners.length) ddropTouched.add(selr);
+                ddropStyled.add(selr);
                 if (ddropSelected.has(selr)) {
                     ddropSelected.delete(selr);
                     ddropCounts.delete(selr);   /* wintty.c:1130 */
